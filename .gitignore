@@ -1,2 +1,5 @@
 JIT_ART
 **/__pycache__/**
+*.swp
+tags
+cscope.out
