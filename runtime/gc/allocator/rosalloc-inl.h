@@ -19,6 +19,8 @@
 
 #include "rosalloc.h"
 
+#include "niel_instrumentation.h"
+
 namespace art {
 namespace gc {
 namespace allocator {
@@ -96,6 +98,7 @@ inline void* RosAlloc::AllocFromThreadLocalRun(Thread* self, size_t size,
   if (LIKELY(slot_addr != nullptr)) {
     *bytes_allocated = bracket_size;
   }
+  NiRecordRosAllocThreadLocalAlloc(self, bracket_size);
   return slot_addr;
 }
 

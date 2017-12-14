@@ -31,6 +31,8 @@
 #include <sstream>
 #include <vector>
 
+#include "niel_instrumentation.h"
+
 namespace art {
 namespace gc {
 namespace allocator {
@@ -631,6 +633,7 @@ inline void* RosAlloc::AllocFromCurrentRunUnlocked(Thread* self, size_t idx) {
     slot_addr = current_run->AllocSlot();
     // Must succeed now with a new run.
     DCHECK(slot_addr != nullptr);
+    NiRecordRosAllocNormalAlloc(self, IndexToBracketSize(idx));
   }
   return slot_addr;
 }
@@ -740,6 +743,7 @@ void* RosAlloc::AllocFromRun(Thread* self, size_t size, size_t* bytes_allocated,
     }
     *bytes_allocated = bracket_size;
     *usable_size = bracket_size;
+    NiRecordRosAllocThreadLocalAlloc(self, bracket_size);
   } else {
     // Use the (shared) current run.
     MutexLock mu(self, *size_bracket_locks_[idx]);

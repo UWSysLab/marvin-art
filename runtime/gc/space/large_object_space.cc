@@ -31,6 +31,8 @@
 #include "space-inl.h"
 #include "thread-inl.h"
 
+#include "niel_instrumentation.h"
+
 namespace art {
 namespace gc {
 namespace space {
@@ -170,6 +172,7 @@ mirror::Object* LargeObjectMapSpace::Alloc(Thread* self, size_t num_bytes,
   total_bytes_allocated_ += allocation_size;
   ++num_objects_allocated_;
   ++total_objects_allocated_;
+  NiRecordLargeObjectAlloc(self, allocation_size);
   return obj;
 }
 
