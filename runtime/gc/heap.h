@@ -119,6 +119,7 @@ static constexpr bool kUseThreadLocalAllocationStack = true;
 
 class Heap {
  public:
+  std::vector<space::Space*> ni_spaces_;
   // If true, measure the total allocation time.
   static constexpr size_t kDefaultStartingSize = kPageSize;
   static constexpr size_t kDefaultInitialSize = 2 * MB;

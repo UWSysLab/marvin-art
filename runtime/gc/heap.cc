@@ -74,6 +74,8 @@
 #include "thread_list.h"
 #include "well_known_classes.h"
 
+#include "niel_instrumentation.h"
+
 namespace art {
 
 namespace gc {
@@ -1062,6 +1064,7 @@ void Heap::DeleteThreadPool() {
 
 void Heap::AddSpace(space::Space* space) {
   CHECK(space != nullptr);
+  ni_spaces_.push_back(space);
   WriterMutexLock mu(Thread::Current(), *Locks::heap_bitmap_lock_);
   if (space->IsContinuousSpace()) {
     DCHECK(!space->IsDiscontinuousSpace());
@@ -1103,6 +1106,8 @@ void Heap::SetSpaceAsDefault(space::ContinuousSpace* continuous_space) {
 
 void Heap::RemoveSpace(space::Space* space) {
   DCHECK(space != nullptr);
+  auto ni_spaces_it = std::find(ni_spaces_.begin(), ni_spaces_.end(), space);
+  ni_spaces_.erase(ni_spaces_it);
   WriterMutexLock mu(Thread::Current(), *Locks::heap_bitmap_lock_);
   if (space->IsContinuousSpace()) {
     DCHECK(!space->IsDiscontinuousSpace());

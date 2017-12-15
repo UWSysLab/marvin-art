@@ -1,6 +1,10 @@
 #include "niel_instrumentation.h"
 
 #include "base/mutex.h"
+#include "gc/allocator/rosalloc.h"
+#include "gc/heap.h"
+#include "gc/space/rosalloc_space.h"
+#include "gc/space/space.h"
 #include "globals.h"
 #include "thread.h"
 
@@ -11,6 +15,8 @@ namespace art {
 const int LOG_INTERVAL_SECONDS = 5;
 
 Mutex instMutex("NielInstrumentationMutex", kLoggingLock);
+
+gc::Heap * heap = NULL;
 
 time_t lastLogTime;
 
@@ -31,6 +37,7 @@ void NiRecordRosAllocThreadLocalAlloc(Thread * self, size_t size) {
     instMutex.ExclusiveUnlock(self);
     maybePrintLog();
 }
+
 void NiRecordRosAllocNormalAlloc(Thread * self, size_t size) {
     instMutex.ExclusiveLock(self);
     numNormalAllocs++;
@@ -38,12 +45,17 @@ void NiRecordRosAllocNormalAlloc(Thread * self, size_t size) {
     instMutex.ExclusiveUnlock(self);
     maybePrintLog();
 }
+
 void NiRecordLargeObjectAlloc(Thread * self, size_t size) {
     instMutex.ExclusiveLock(self);
     numLargeObjectAllocs++;
     sizeLargeObjectAllocs += size;
     instMutex.ExclusiveUnlock(self);
     maybePrintLog();
+}
+
+void NiSetHeap(gc::Heap * inHeap) {
+    heap = inHeap;
 }
 
 void maybePrintLog() {
@@ -55,8 +67,32 @@ void maybePrintLog() {
                   << " size: " << sizeNormalAllocs
                   << " total large-object allocs: " << numLargeObjectAllocs
                   << " size: " << sizeLargeObjectAllocs
-                  << "\n";
+                  ;
+        printHeap();
         lastLogTime = currentTime;
+    }
+}
+
+void printHeap() {
+    if (heap == NULL) {
+        return;
+    }
+
+    LOG(INFO) << "NIEL num spaces " << heap->ni_spaces_.size();
+    for (auto it = heap->ni_spaces_.begin(); it != heap->ni_spaces_.end(); it++) {
+        LOG(INFO) << "NIEL space " << (*it)->GetName()
+                  << " continuous? " << (*it)->IsContinuousSpace()
+                  << " discontinuous? " << (*it)->IsDiscontinuousSpace()
+                  << " alloc? " << (*it)->IsAllocSpace()
+                  ;
+    }
+
+    gc::space::RosAllocSpace * rosAllocSpace = heap->GetRosAllocSpace();
+    if (rosAllocSpace != NULL) {
+        gc::allocator::RosAlloc * rosAlloc = rosAllocSpace->GetRosAlloc();
+        if (rosAlloc != NULL) {
+            LOG(INFO) << "NIEL RosAlloc footprint: " << rosAlloc->Footprint();
+        }
     }
 }
 
