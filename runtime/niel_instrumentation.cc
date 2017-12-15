@@ -21,27 +21,37 @@ gc::Heap * heap = NULL;
 time_t lastLogTime;
 
 /* Locked with instMutex */
-long numThreadLocalAllocs = 0;
-long numNormalAllocs = 0;
+long numRosAllocThreadLocalAllocs = 0;
+long numRosAllocNormalAllocs = 0;
+long numRosAllocLargeObjectAllocs = 0;
 long numLargeObjectAllocs = 0;
 
-long sizeThreadLocalAllocs = 0;
-long sizeNormalAllocs = 0;
+long sizeRosAllocThreadLocalAllocs = 0;
+long sizeRosAllocNormalAllocs = 0;
+long sizeRosAllocLargeObjectAllocs = 0;
 long sizeLargeObjectAllocs = 0;
 /* End locked with instMutex */
 
 void NiRecordRosAllocThreadLocalAlloc(Thread * self, size_t size) {
     instMutex.ExclusiveLock(self);
-    numThreadLocalAllocs++;
-    sizeThreadLocalAllocs += size;
+    numRosAllocThreadLocalAllocs++;
+    sizeRosAllocThreadLocalAllocs += size;
     instMutex.ExclusiveUnlock(self);
     maybePrintLog();
 }
 
 void NiRecordRosAllocNormalAlloc(Thread * self, size_t size) {
     instMutex.ExclusiveLock(self);
-    numNormalAllocs++;
-    sizeNormalAllocs += size;
+    numRosAllocNormalAllocs++;
+    sizeRosAllocNormalAllocs += size;
+    instMutex.ExclusiveUnlock(self);
+    maybePrintLog();
+}
+
+void NiRecordRosAllocLargeObjectAlloc(Thread * self, size_t size) {
+    instMutex.ExclusiveLock(self);
+    numRosAllocLargeObjectAllocs++;
+    sizeRosAllocLargeObjectAllocs += size;
     instMutex.ExclusiveUnlock(self);
     maybePrintLog();
 }
@@ -61,11 +71,16 @@ void NiSetHeap(gc::Heap * inHeap) {
 void maybePrintLog() {
     time_t currentTime = time(NULL);
     if (difftime(currentTime, lastLogTime) > LOG_INTERVAL_SECONDS) {
-        LOG(INFO) << "NIEL total thread-local allocs: " << numThreadLocalAllocs
-                  << " size: " << sizeThreadLocalAllocs
-                  << " total normal allocs: " << numNormalAllocs
-                  << " size: " << sizeNormalAllocs
-                  << " total large-object allocs: " << numLargeObjectAllocs
+        LOG(INFO) << "NIEL total RosAlloc thread-local allocs: " << numRosAllocThreadLocalAllocs
+                  << " size: " << sizeRosAllocThreadLocalAllocs
+                  << "\n"
+                  << "     total RosAlloc normal allocs: " << numRosAllocNormalAllocs
+                  << " size: " << sizeRosAllocNormalAllocs
+                  << "\n"
+                  << "     total RosAlloc large object allocs: " << numRosAllocLargeObjectAllocs
+                  << " size: " << sizeRosAllocLargeObjectAllocs
+                  << "\n"
+                  << "     total LargeObjectSpace allocs: " << numLargeObjectAllocs
                   << " size: " << sizeLargeObjectAllocs
                   ;
         printHeap();
