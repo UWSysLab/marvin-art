@@ -86,6 +86,14 @@ void printHeap() {
                   << " alloc? " << (*it)->IsAllocSpace()
                   ;
     }
+    LOG(INFO) << "NIEL num garbage collectors " << heap->NiGetGarbageCollectors()->size();
+    for (auto it = heap->NiGetGarbageCollectors()->begin(); it != heap->NiGetGarbageCollectors()->end(); it++) {
+        LOG(INFO) << "NIEL garbage collector " << (*it)->GetName()
+                  << " semi_space? " << ((*it) == heap->NiGetSemiSpace())
+                  << " mark_compact? " << ((*it) == heap->NiGetMarkCompact())
+                  << " concurrent_copying? " << ((*it) == heap->NiGetConcurrentCopying())
+                  ;
+    }
 
     gc::space::RosAllocSpace * rosAllocSpace = heap->GetRosAllocSpace();
     if (rosAllocSpace != NULL) {
