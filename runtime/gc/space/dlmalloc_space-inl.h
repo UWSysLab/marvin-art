@@ -21,6 +21,8 @@
 #include "gc/allocator/dlmalloc.h"
 #include "thread.h"
 
+#include "niel_instrumentation.h"
+
 namespace art {
 namespace gc {
 namespace space {
@@ -52,7 +54,7 @@ inline size_t DlMallocSpace::AllocationSizeNonvirtual(mirror::Object* obj, size_
 }
 
 inline mirror::Object* DlMallocSpace::AllocWithoutGrowthLocked(
-    Thread* /*self*/, size_t num_bytes,
+    Thread* self, size_t num_bytes,
     size_t* bytes_allocated,
     size_t* usable_size,
     size_t* bytes_tl_bulk_allocated) {
@@ -66,6 +68,7 @@ inline mirror::Object* DlMallocSpace::AllocWithoutGrowthLocked(
     DCHECK(bytes_allocated != nullptr);
     *bytes_allocated = allocation_size;
     *bytes_tl_bulk_allocated = allocation_size;
+    NiRecordDlMallocAlloc(self, allocation_size);
   }
   return result;
 }

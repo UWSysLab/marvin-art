@@ -16,6 +16,7 @@ class Thread;
 void NiRecordRosAllocThreadLocalAlloc(Thread * self, size_t size);
 void NiRecordRosAllocNormalAlloc(Thread * self, size_t size);
 void NiRecordRosAllocLargeObjectAlloc(Thread * self, size_t size);
+void NiRecordDlMallocAlloc(Thread * self, size_t size);
 void NiRecordLargeObjectAlloc(Thread * self, size_t size);
 
 void NiSetHeap(gc::Heap * inHeap);

@@ -24,11 +24,13 @@ time_t lastLogTime;
 long numRosAllocThreadLocalAllocs = 0;
 long numRosAllocNormalAllocs = 0;
 long numRosAllocLargeObjectAllocs = 0;
+long numDlMallocAllocs = 0;
 long numLargeObjectAllocs = 0;
 
 long sizeRosAllocThreadLocalAllocs = 0;
 long sizeRosAllocNormalAllocs = 0;
 long sizeRosAllocLargeObjectAllocs = 0;
+long sizeDlMallocAllocs = 0;
 long sizeLargeObjectAllocs = 0;
 /* End locked with instMutex */
 
@@ -56,6 +58,14 @@ void NiRecordRosAllocLargeObjectAlloc(Thread * self, size_t size) {
     maybePrintLog();
 }
 
+void NiRecordDlMallocAlloc(Thread * self, size_t size) {
+    instMutex.ExclusiveLock(self);
+    numDlMallocAllocs++;
+    sizeDlMallocAllocs += size;
+    instMutex.ExclusiveUnlock(self);
+    maybePrintLog();
+}
+
 void NiRecordLargeObjectAlloc(Thread * self, size_t size) {
     instMutex.ExclusiveLock(self);
     numLargeObjectAllocs++;
@@ -79,6 +89,9 @@ void maybePrintLog() {
                   << "\n"
                   << "     total RosAlloc large object allocs: " << numRosAllocLargeObjectAllocs
                   << " size: " << sizeRosAllocLargeObjectAllocs
+                  << "\n"
+                  << "     total DlMalloc allocs: " << numDlMallocAllocs
+                  << " size: " << sizeDlMallocAllocs
                   << "\n"
                   << "     total LargeObjectSpace allocs: " << numLargeObjectAllocs
                   << " size: " << sizeLargeObjectAllocs
