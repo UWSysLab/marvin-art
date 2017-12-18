@@ -141,6 +141,7 @@ void MarkSweep::InitializePhase() {
 }
 
 void MarkSweep::RunPhases() {
+  LOG(INFO) << "NIEL running MarkSweep GC with name " << GetName();
   Thread* self = Thread::Current();
   InitializePhase();
   Locks::mutator_lock_->AssertNotHeld(self);
