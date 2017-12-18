@@ -21,55 +21,91 @@ gc::Heap * heap = NULL;
 time_t lastLogTime;
 
 /* Locked with instMutex */
-long numRosAllocThreadLocalAllocs = 0;
-long numRosAllocNormalAllocs = 0;
-long numRosAllocLargeObjectAllocs = 0;
-long numDlMallocAllocs = 0;
-long numLargeObjectAllocs = 0;
+long numTotalRosAllocThreadLocalAllocs = 0;
+long numTotalRosAllocNormalAllocs = 0;
+long numTotalRosAllocLargeObjectAllocs = 0;
+long numTotalDlMallocAllocs = 0;
+long numTotalLargeObjectAllocs = 0;
 
-long sizeRosAllocThreadLocalAllocs = 0;
-long sizeRosAllocNormalAllocs = 0;
-long sizeRosAllocLargeObjectAllocs = 0;
-long sizeDlMallocAllocs = 0;
-long sizeLargeObjectAllocs = 0;
+long sizeTotalRosAllocThreadLocalAllocs = 0;
+long sizeTotalRosAllocNormalAllocs = 0;
+long sizeTotalRosAllocLargeObjectAllocs = 0;
+long sizeTotalDlMallocAllocs = 0;
+long sizeTotalLargeObjectAllocs = 0;
+
+long numCurrentRosAllocAllocs = 0;
+long numCurrentRosAllocLargeObjectAllocs = 0;
+long numCurrentDlMallocAllocs = 0;
+long numCurrentLargeObjectAllocs = 0;
+
+long sizeCurrentRosAllocAllocs = 0;
+long sizeCurrentRosAllocLargeObjectAllocs = 0;
+long sizeCurrentDlMallocAllocs = 0;
+long sizeCurrentLargeObjectAllocs = 0;
 /* End locked with instMutex */
 
-void NiRecordRosAllocThreadLocalAlloc(Thread * self, size_t size) {
+void NiRecordAlloc(Thread * self, size_t size, NiAllocType type) {
     instMutex.ExclusiveLock(self);
-    numRosAllocThreadLocalAllocs++;
-    sizeRosAllocThreadLocalAllocs += size;
+
+    switch(type) {
+      case NI_ALLOC_ROSALLOC_THREAD_LOCAL:
+        numTotalRosAllocThreadLocalAllocs++;
+        sizeTotalRosAllocThreadLocalAllocs += size;
+        numCurrentRosAllocAllocs++;
+        sizeCurrentRosAllocAllocs += size;
+        break;
+      case NI_ALLOC_ROSALLOC_NORMAL:
+        numTotalRosAllocNormalAllocs++;
+        sizeTotalRosAllocNormalAllocs += size;
+        numCurrentRosAllocAllocs++;
+        sizeCurrentRosAllocAllocs += size;
+        break;
+      case NI_ALLOC_ROSALLOC_LARGE:
+        numTotalRosAllocLargeObjectAllocs++;
+        sizeTotalRosAllocLargeObjectAllocs += size;
+        numCurrentRosAllocLargeObjectAllocs++;
+        sizeCurrentRosAllocLargeObjectAllocs += size;
+        break;
+      case NI_ALLOC_DLMALLOC:
+        numTotalDlMallocAllocs++;
+        sizeTotalDlMallocAllocs += size;
+        numCurrentDlMallocAllocs++;
+        sizeCurrentDlMallocAllocs += size;
+        break;
+      case NI_ALLOC_LOS:
+        numTotalLargeObjectAllocs++;
+        sizeTotalLargeObjectAllocs += size;
+        numCurrentLargeObjectAllocs++;
+        sizeCurrentLargeObjectAllocs += size;
+        break;
+    }
+
     instMutex.ExclusiveUnlock(self);
     maybePrintLog();
 }
 
-void NiRecordRosAllocNormalAlloc(Thread * self, size_t size) {
+void NiRecordFree(Thread * self, size_t size, NiFreeType type) {
     instMutex.ExclusiveLock(self);
-    numRosAllocNormalAllocs++;
-    sizeRosAllocNormalAllocs += size;
-    instMutex.ExclusiveUnlock(self);
-    maybePrintLog();
-}
 
-void NiRecordRosAllocLargeObjectAlloc(Thread * self, size_t size) {
-    instMutex.ExclusiveLock(self);
-    numRosAllocLargeObjectAllocs++;
-    sizeRosAllocLargeObjectAllocs += size;
-    instMutex.ExclusiveUnlock(self);
-    maybePrintLog();
-}
+    switch(type) {
+      case NI_FREE_ROSALLOC:
+        numCurrentRosAllocAllocs--;
+        sizeCurrentRosAllocAllocs -= size;
+        break;
+      case NI_FREE_ROSALLOC_LARGE:
+        numCurrentRosAllocLargeObjectAllocs--;
+        sizeCurrentRosAllocLargeObjectAllocs -= size;
+        break;
+      case NI_FREE_DLMALLOC:
+        numCurrentDlMallocAllocs--;
+        sizeCurrentDlMallocAllocs -= size;
+        break;
+      case NI_FREE_LOS:
+        numCurrentLargeObjectAllocs--;
+        sizeCurrentLargeObjectAllocs -= size;
+        break;
+    }
 
-void NiRecordDlMallocAlloc(Thread * self, size_t size) {
-    instMutex.ExclusiveLock(self);
-    numDlMallocAllocs++;
-    sizeDlMallocAllocs += size;
-    instMutex.ExclusiveUnlock(self);
-    maybePrintLog();
-}
-
-void NiRecordLargeObjectAlloc(Thread * self, size_t size) {
-    instMutex.ExclusiveLock(self);
-    numLargeObjectAllocs++;
-    sizeLargeObjectAllocs += size;
     instMutex.ExclusiveUnlock(self);
     maybePrintLog();
 }
@@ -81,20 +117,20 @@ void NiSetHeap(gc::Heap * inHeap) {
 void maybePrintLog() {
     time_t currentTime = time(NULL);
     if (difftime(currentTime, lastLogTime) > LOG_INTERVAL_SECONDS) {
-        LOG(INFO) << "NIEL total RosAlloc thread-local allocs: " << numRosAllocThreadLocalAllocs
-                  << " size: " << sizeRosAllocThreadLocalAllocs
+        LOG(INFO) << "NIEL total RosAlloc thread-local allocs: " << numTotalRosAllocThreadLocalAllocs
+                  << " size: " << sizeTotalRosAllocThreadLocalAllocs
                   << "\n"
-                  << "     total RosAlloc normal allocs: " << numRosAllocNormalAllocs
-                  << " size: " << sizeRosAllocNormalAllocs
+                  << "     total RosAlloc normal allocs: " << numTotalRosAllocNormalAllocs
+                  << " size: " << sizeTotalRosAllocNormalAllocs
                   << "\n"
-                  << "     total RosAlloc large object allocs: " << numRosAllocLargeObjectAllocs
-                  << " size: " << sizeRosAllocLargeObjectAllocs
+                  << "     total RosAlloc large object allocs: " << numTotalRosAllocLargeObjectAllocs
+                  << " size: " << sizeTotalRosAllocLargeObjectAllocs
                   << "\n"
-                  << "     total DlMalloc allocs: " << numDlMallocAllocs
-                  << " size: " << sizeDlMallocAllocs
+                  << "     total DlMalloc allocs: " << numTotalDlMallocAllocs
+                  << " size: " << sizeTotalDlMallocAllocs
                   << "\n"
-                  << "     total LargeObjectSpace allocs: " << numLargeObjectAllocs
-                  << " size: " << sizeLargeObjectAllocs
+                  << "     total LargeObjectSpace allocs: " << numTotalLargeObjectAllocs
+                  << " size: " << sizeTotalLargeObjectAllocs
                   ;
         printHeap();
         lastLogTime = currentTime;

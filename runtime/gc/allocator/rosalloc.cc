@@ -491,7 +491,7 @@ void* RosAlloc::AllocLargeObject(Thread* self, size_t size, size_t* bytes_alloca
               << "-0x" << (reinterpret_cast<intptr_t>(r) + num_pages * kPageSize)
               << "(" << std::dec << (num_pages * kPageSize) << ")";
   }
-  NiRecordRosAllocLargeObjectAlloc(self, total_bytes);
+  NiRecordAlloc(self, total_bytes, NI_ALLOC_ROSALLOC_LARGE);
   // Check if the returned memory is really all zero.
   if (ShouldCheckZeroMemory()) {
     CHECK_EQ(total_bytes % sizeof(uintptr_t), 0U);
@@ -634,7 +634,7 @@ inline void* RosAlloc::AllocFromCurrentRunUnlocked(Thread* self, size_t idx) {
     slot_addr = current_run->AllocSlot();
     // Must succeed now with a new run.
     DCHECK(slot_addr != nullptr);
-    NiRecordRosAllocNormalAlloc(self, IndexToBracketSize(idx));
+    NiRecordAlloc(self, IndexToBracketSize(idx), NI_ALLOC_ROSALLOC_NORMAL);
   }
   return slot_addr;
 }
@@ -744,7 +744,7 @@ void* RosAlloc::AllocFromRun(Thread* self, size_t size, size_t* bytes_allocated,
     }
     *bytes_allocated = bracket_size;
     *usable_size = bracket_size;
-    NiRecordRosAllocThreadLocalAlloc(self, bracket_size);
+    NiRecordAlloc(self, bracket_size, NI_ALLOC_ROSALLOC_THREAD_LOCAL);
   } else {
     // Use the (shared) current run.
     MutexLock mu(self, *size_bracket_locks_[idx]);

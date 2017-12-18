@@ -172,7 +172,7 @@ mirror::Object* LargeObjectMapSpace::Alloc(Thread* self, size_t num_bytes,
   total_bytes_allocated_ += allocation_size;
   ++num_objects_allocated_;
   ++total_objects_allocated_;
-  NiRecordLargeObjectAlloc(self, allocation_size);
+  NiRecordAlloc(self, allocation_size, NI_ALLOC_LOS);
   return obj;
 }
 
