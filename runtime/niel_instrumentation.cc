@@ -9,6 +9,7 @@
 #include "thread.h"
 
 #include <ctime>
+#include <map>
 
 namespace art {
 
@@ -24,59 +25,46 @@ time_t lastLogTime;
 long numTotalRosAllocThreadLocalAllocs = 0;
 long numTotalRosAllocNormalAllocs = 0;
 long numTotalRosAllocLargeObjectAllocs = 0;
-long numTotalDlMallocAllocs = 0;
-long numTotalLargeObjectAllocs = 0;
 
 long sizeTotalRosAllocThreadLocalAllocs = 0;
 long sizeTotalRosAllocNormalAllocs = 0;
 long sizeTotalRosAllocLargeObjectAllocs = 0;
-long sizeTotalDlMallocAllocs = 0;
-long sizeTotalLargeObjectAllocs = 0;
 
 long numCurrentRosAllocAllocs = 0;
 long numCurrentRosAllocLargeObjectAllocs = 0;
-long numCurrentDlMallocAllocs = 0;
-long numCurrentLargeObjectAllocs = 0;
 
 long sizeCurrentRosAllocAllocs = 0;
 long sizeCurrentRosAllocLargeObjectAllocs = 0;
-long sizeCurrentDlMallocAllocs = 0;
-long sizeCurrentLargeObjectAllocs = 0;
+
+std::map<std::string, int> currentAllocCounts;
+std::map<std::string, int> currentAllocSizes;
+
+std::map<std::string, int> totalAllocCounts;
+std::map<std::string, int> totalAllocSizes;
+
 /* End locked with instMutex */
 
-void NiRecordAlloc(Thread * self, size_t size, NiAllocType type) {
+void NiRecordRosAllocAlloc(Thread * self, size_t size, NiRosAllocAllocType type) {
     instMutex.ExclusiveLock(self);
 
     switch(type) {
-      case NI_ALLOC_ROSALLOC_THREAD_LOCAL:
+      case NI_ROSALLOC_ALLOC_THREAD_LOCAL:
         numTotalRosAllocThreadLocalAllocs++;
         sizeTotalRosAllocThreadLocalAllocs += size;
         numCurrentRosAllocAllocs++;
         sizeCurrentRosAllocAllocs += size;
         break;
-      case NI_ALLOC_ROSALLOC_NORMAL:
+      case NI_ROSALLOC_ALLOC_NORMAL:
         numTotalRosAllocNormalAllocs++;
         sizeTotalRosAllocNormalAllocs += size;
         numCurrentRosAllocAllocs++;
         sizeCurrentRosAllocAllocs += size;
         break;
-      case NI_ALLOC_ROSALLOC_LARGE:
+      case NI_ROSALLOC_ALLOC_LARGE:
         numTotalRosAllocLargeObjectAllocs++;
         sizeTotalRosAllocLargeObjectAllocs += size;
         numCurrentRosAllocLargeObjectAllocs++;
         sizeCurrentRosAllocLargeObjectAllocs += size;
-        break;
-      case NI_ALLOC_DLMALLOC:
-        numTotalDlMallocAllocs++;
-        sizeTotalDlMallocAllocs += size;
-        numCurrentDlMallocAllocs++;
-        sizeCurrentDlMallocAllocs += size;
-        break;
-      case NI_ALLOC_LOS:
-        numTotalLargeObjectAllocs++;
-        sizeTotalLargeObjectAllocs += size;
-        numCurrentLargeObjectAllocs++;
-        sizeCurrentLargeObjectAllocs += size;
         break;
     }
 
@@ -84,27 +72,43 @@ void NiRecordAlloc(Thread * self, size_t size, NiAllocType type) {
     maybePrintLog();
 }
 
-void NiRecordFree(Thread * self, size_t size, NiFreeType type) {
+void NiRecordRosAllocFree(Thread * self, size_t size, NiRosAllocFreeType type) {
     instMutex.ExclusiveLock(self);
 
     switch(type) {
-      case NI_FREE_ROSALLOC:
+      case NI_ROSALLOC_FREE_NORMAL_OR_THREAD_LOCAL:
         numCurrentRosAllocAllocs--;
         sizeCurrentRosAllocAllocs -= size;
         break;
-      case NI_FREE_ROSALLOC_LARGE:
+      case NI_ROSALLOC_FREE_LARGE:
         numCurrentRosAllocLargeObjectAllocs--;
         sizeCurrentRosAllocLargeObjectAllocs -= size;
         break;
-      case NI_FREE_DLMALLOC:
-        numCurrentDlMallocAllocs--;
-        sizeCurrentDlMallocAllocs -= size;
-        break;
-      case NI_FREE_LOS:
-        numCurrentLargeObjectAllocs--;
-        sizeCurrentLargeObjectAllocs -= size;
-        break;
     }
+
+    instMutex.ExclusiveUnlock(self);
+    maybePrintLog();
+}
+
+void NiRecordAlloc(Thread * self, gc::space::Space * space, size_t size) {
+    instMutex.ExclusiveLock(self);
+
+    std::string name(space->GetName());
+    currentAllocCounts[name]++;
+    currentAllocSizes[name] += size;
+    totalAllocCounts[name]++;
+    totalAllocSizes[name] += size;
+
+    instMutex.ExclusiveUnlock(self);
+    maybePrintLog();
+}
+
+void NiRecordFree(Thread * self, gc::space::Space * space, size_t size, int count) {
+    instMutex.ExclusiveLock(self);
+
+    std::string name(space->GetName());
+    currentAllocCounts[name] -= count;
+    currentAllocSizes[name] -= size;
 
     instMutex.ExclusiveUnlock(self);
     maybePrintLog();
@@ -117,34 +121,26 @@ void NiSetHeap(gc::Heap * inHeap) {
 void maybePrintLog() {
     time_t currentTime = time(NULL);
     if (difftime(currentTime, lastLogTime) > LOG_INTERVAL_SECONDS) {
-        LOG(INFO) << "NIEL total RosAlloc thread-local allocs: " << numTotalRosAllocThreadLocalAllocs
-                  << " size: " << sizeTotalRosAllocThreadLocalAllocs
-                  << "\n"
-                  << "     total RosAlloc normal allocs: " << numTotalRosAllocNormalAllocs
-                  << " size: " << sizeTotalRosAllocNormalAllocs
-                  << "\n"
-                  << "     total RosAlloc large object allocs: " << numTotalRosAllocLargeObjectAllocs
-                  << " size: " << sizeTotalRosAllocLargeObjectAllocs
-                  << "\n"
-                  << "     total DlMalloc allocs: " << numTotalDlMallocAllocs
-                  << " size: " << sizeTotalDlMallocAllocs
-                  << "\n"
-                  << "     total LargeObjectSpace allocs: " << numTotalLargeObjectAllocs
-                  << " size: " << sizeTotalLargeObjectAllocs
-                  ;
-        LOG(INFO) << "NIEL current RosAlloc thread-local/normal allocs: " << numCurrentRosAllocAllocs
+        for (auto it = currentAllocCounts.begin(); it != currentAllocCounts.end(); it++) {
+            std::string name = it->first;
+            LOG(INFO) << "NIEL space |" << name << "| curr count: " << currentAllocCounts[name]
+                      << " curr size: " << currentAllocSizes[name] << " total count: "
+                      << totalAllocCounts[name] << " total size: " << totalAllocSizes[name]
+                      ;
+        }
+        LOG(INFO) << "NIEL RosAlloc curr thread-local/normal count: " << numCurrentRosAllocAllocs
                   << " size: " << sizeCurrentRosAllocAllocs
-                  << "\n"
-                  << "     current RosAlloc large object allocs: " << numCurrentRosAllocLargeObjectAllocs
+                  << " curr large count: " << numCurrentRosAllocLargeObjectAllocs
                   << " size: " << sizeCurrentRosAllocLargeObjectAllocs
-                  << "\n"
-                  << "     current DlMalloc allocs: " << numCurrentDlMallocAllocs
-                  << " size: " << sizeCurrentDlMallocAllocs
-                  << "\n"
-                  << "     current LargeObjectSpace allocs: " << numCurrentLargeObjectAllocs
-                  << " size: " << sizeCurrentLargeObjectAllocs
                   ;
-        printHeap();
+        LOG(INFO) << "NIEL RosAlloc total thread-local count: " << numTotalRosAllocThreadLocalAllocs
+                  << " size: " << sizeTotalRosAllocThreadLocalAllocs
+                  << " total normal count: " << numTotalRosAllocNormalAllocs
+                  << " size: " << sizeTotalRosAllocNormalAllocs
+                  << " total large count: " << numTotalRosAllocLargeObjectAllocs
+                  << " size: " << sizeTotalRosAllocLargeObjectAllocs
+                  ;
+        //printHeap();
         lastLogTime = currentTime;
     }
 }

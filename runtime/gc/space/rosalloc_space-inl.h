@@ -88,6 +88,7 @@ inline mirror::Object* RosAllocSpace::AllocCommon(Thread* self, size_t num_bytes
     DCHECK(bytes_tl_bulk_allocated != nullptr);
     *bytes_tl_bulk_allocated = rosalloc_bytes_tl_bulk_allocated;
   }
+  NiRecordAlloc(self, this, rosalloc_bytes_allocated);
   return result;
 }
 

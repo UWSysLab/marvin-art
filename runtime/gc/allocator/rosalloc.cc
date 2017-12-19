@@ -491,7 +491,7 @@ void* RosAlloc::AllocLargeObject(Thread* self, size_t size, size_t* bytes_alloca
               << "-0x" << (reinterpret_cast<intptr_t>(r) + num_pages * kPageSize)
               << "(" << std::dec << (num_pages * kPageSize) << ")";
   }
-  NiRecordAlloc(self, total_bytes, NI_ALLOC_ROSALLOC_LARGE);
+  NiRecordRosAllocAlloc(self, total_bytes, NI_ROSALLOC_ALLOC_LARGE);
   // Check if the returned memory is really all zero.
   if (ShouldCheckZeroMemory()) {
     CHECK_EQ(total_bytes % sizeof(uintptr_t), 0U);
@@ -634,7 +634,7 @@ inline void* RosAlloc::AllocFromCurrentRunUnlocked(Thread* self, size_t idx) {
     slot_addr = current_run->AllocSlot();
     // Must succeed now with a new run.
     DCHECK(slot_addr != nullptr);
-    NiRecordAlloc(self, IndexToBracketSize(idx), NI_ALLOC_ROSALLOC_NORMAL);
+    NiRecordRosAllocAlloc(self, IndexToBracketSize(idx), NI_ROSALLOC_ALLOC_NORMAL);
   }
   return slot_addr;
 }
@@ -744,7 +744,7 @@ void* RosAlloc::AllocFromRun(Thread* self, size_t size, size_t* bytes_allocated,
     }
     *bytes_allocated = bracket_size;
     *usable_size = bracket_size;
-    NiRecordAlloc(self, bracket_size, NI_ALLOC_ROSALLOC_THREAD_LOCAL);
+    NiRecordRosAllocAlloc(self, bracket_size, NI_ROSALLOC_ALLOC_THREAD_LOCAL);
   } else {
     // Use the (shared) current run.
     MutexLock mu(self, *size_bracket_locks_[idx]);
@@ -1059,7 +1059,7 @@ size_t RosAlloc::BulkFree(Thread* self, void** ptrs, size_t num_ptrs) {
         MutexLock mu(self, lock_);
         size_t ni_temp_size = FreePages(self, ptr, false);
         freed_bytes += ni_temp_size;
-        NiRecordFree(self, ni_temp_size, NI_FREE_ROSALLOC_LARGE);
+        NiRecordRosAllocFree(self, ni_temp_size, NI_ROSALLOC_FREE_LARGE);
         continue;
       } else {
         LOG(FATAL) << "Unreachable - page map type: " << static_cast<int>(page_map_entry);
@@ -1087,7 +1087,7 @@ size_t RosAlloc::BulkFree(Thread* self, void** ptrs, size_t num_ptrs) {
       } else if (page_map_entry == kPageMapLargeObject) {
         size_t ni_temp_size = FreePages(self, ptr, false);
         freed_bytes += ni_temp_size;
-        NiRecordFree(self, ni_temp_size, NI_FREE_ROSALLOC_LARGE);
+        NiRecordRosAllocFree(self, ni_temp_size, NI_ROSALLOC_FREE_LARGE);
         continue;
       } else {
         LOG(FATAL) << "Unreachable - page map type: " << static_cast<int>(page_map_entry);
@@ -1098,7 +1098,7 @@ size_t RosAlloc::BulkFree(Thread* self, void** ptrs, size_t num_ptrs) {
     // Set the bit in the bulk free bit map.
     size_t ni_temp_size = run->AddToBulkFreeList(ptr);
     freed_bytes += ni_temp_size;
-    NiRecordFree(self, ni_temp_size, NI_FREE_ROSALLOC);
+    NiRecordRosAllocFree(self, ni_temp_size, NI_ROSALLOC_FREE_NORMAL_OR_THREAD_LOCAL);
 #ifdef __ANDROID__
     if (!run->to_be_bulk_freed_) {
       run->to_be_bulk_freed_ = true;

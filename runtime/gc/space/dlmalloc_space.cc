@@ -191,7 +191,6 @@ size_t DlMallocSpace::FreeList(Thread* self, size_t num_ptrs, mirror::Object** p
       __builtin_prefetch(reinterpret_cast<char*>(ptrs[i + look_ahead]) - sizeof(size_t));
     }
     bytes_freed += AllocationSizeNonvirtual(ptr, nullptr);
-    NiRecordFree(self, AllocationSizeNonvirtual(ptr, nullptr), NI_FREE_DLMALLOC);
   }
 
   if (kRecentFreeCount > 0) {
@@ -218,6 +217,7 @@ size_t DlMallocSpace::FreeList(Thread* self, size_t num_ptrs, mirror::Object** p
   {
     MutexLock mu(self, lock_);
     mspace_bulk_free(mspace_, reinterpret_cast<void**>(ptrs), num_ptrs);
+    NiRecordFree(self, this, bytes_freed, num_ptrs);
     return bytes_freed;
   }
 }

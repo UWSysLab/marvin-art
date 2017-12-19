@@ -238,6 +238,7 @@ size_t RosAllocSpace::FreeList(Thread* self, size_t num_ptrs, mirror::Object** p
   if (kVerifyFreedBytes) {
     CHECK_EQ(verify_bytes, bytes_freed);
   }
+  NiRecordFree(self, this, bytes_freed, num_ptrs);
   return bytes_freed;
 }
 

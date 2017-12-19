@@ -13,17 +13,19 @@ namespace gc {
 }
 class Thread;
 
-enum NiAllocType {
-    NI_ALLOC_ROSALLOC_THREAD_LOCAL, NI_ALLOC_ROSALLOC_NORMAL, NI_ALLOC_ROSALLOC_LARGE,
-    NI_ALLOC_DLMALLOC, NI_ALLOC_LOS
+enum NiRosAllocAllocType {
+    NI_ROSALLOC_ALLOC_THREAD_LOCAL, NI_ROSALLOC_ALLOC_NORMAL, NI_ROSALLOC_ALLOC_LARGE
 };
 
-enum NiFreeType {
-    NI_FREE_ROSALLOC, NI_FREE_ROSALLOC_LARGE, NI_FREE_DLMALLOC, NI_FREE_LOS
+enum NiRosAllocFreeType {
+    NI_ROSALLOC_FREE_NORMAL_OR_THREAD_LOCAL, NI_ROSALLOC_FREE_LARGE
 };
 
-void NiRecordAlloc(Thread * self, size_t size, NiAllocType type);
-void NiRecordFree(Thread * self, size_t size, NiFreeType type);
+void NiRecordRosAllocAlloc(Thread * self, size_t size, NiRosAllocAllocType type);
+void NiRecordRosAllocFree(Thread * self, size_t size, NiRosAllocFreeType type);
+
+void NiRecordAlloc(Thread * self, gc::space::Space * space, size_t size);
+void NiRecordFree(Thread * self, gc::space::Space * space, size_t size, int count);
 
 void NiSetHeap(gc::Heap * inHeap);
 

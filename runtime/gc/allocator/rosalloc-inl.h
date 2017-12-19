@@ -98,7 +98,7 @@ inline void* RosAlloc::AllocFromThreadLocalRun(Thread* self, size_t size,
   if (LIKELY(slot_addr != nullptr)) {
     *bytes_allocated = bracket_size;
   }
-  NiRecordAlloc(self, bracket_size, NI_ALLOC_ROSALLOC_THREAD_LOCAL);
+  NiRecordRosAllocAlloc(self, bracket_size, NI_ROSALLOC_ALLOC_THREAD_LOCAL);
   return slot_addr;
 }
 
