@@ -206,6 +206,7 @@ size_t LargeObjectMapSpace::Free(Thread* self, mirror::Object* ptr) {
   --num_objects_allocated_;
   delete mem_map;
   large_objects_.erase(it);
+  NiRecordFree(self, allocation_size, NI_FREE_LOS);
   return allocation_size;
 }
 

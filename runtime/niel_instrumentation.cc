@@ -132,6 +132,18 @@ void maybePrintLog() {
                   << "     total LargeObjectSpace allocs: " << numTotalLargeObjectAllocs
                   << " size: " << sizeTotalLargeObjectAllocs
                   ;
+        LOG(INFO) << "NIEL current RosAlloc thread-local/normal allocs: " << numCurrentRosAllocAllocs
+                  << " size: " << sizeCurrentRosAllocAllocs
+                  << "\n"
+                  << "     current RosAlloc large object allocs: " << numCurrentRosAllocLargeObjectAllocs
+                  << " size: " << sizeCurrentRosAllocLargeObjectAllocs
+                  << "\n"
+                  << "     current DlMalloc allocs: " << numCurrentDlMallocAllocs
+                  << " size: " << sizeCurrentDlMallocAllocs
+                  << "\n"
+                  << "     current LargeObjectSpace allocs: " << numCurrentLargeObjectAllocs
+                  << " size: " << sizeCurrentLargeObjectAllocs
+                  ;
         printHeap();
         lastLogTime = currentTime;
     }

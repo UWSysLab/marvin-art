@@ -1057,7 +1057,9 @@ size_t RosAlloc::BulkFree(Thread* self, void** ptrs, size_t num_ptrs) {
         run = reinterpret_cast<Run*>(base_ + pi * kPageSize);
       } else if (page_map_entry == kPageMapLargeObject) {
         MutexLock mu(self, lock_);
-        freed_bytes += FreePages(self, ptr, false);
+        size_t ni_temp_size = FreePages(self, ptr, false);
+        freed_bytes += ni_temp_size;
+        NiRecordFree(self, ni_temp_size, NI_FREE_ROSALLOC_LARGE);
         continue;
       } else {
         LOG(FATAL) << "Unreachable - page map type: " << static_cast<int>(page_map_entry);
@@ -1083,7 +1085,9 @@ size_t RosAlloc::BulkFree(Thread* self, void** ptrs, size_t num_ptrs) {
         } while (page_map_[pi] != kPageMapRun);
         run = reinterpret_cast<Run*>(base_ + pi * kPageSize);
       } else if (page_map_entry == kPageMapLargeObject) {
-        freed_bytes += FreePages(self, ptr, false);
+        size_t ni_temp_size = FreePages(self, ptr, false);
+        freed_bytes += ni_temp_size;
+        NiRecordFree(self, ni_temp_size, NI_FREE_ROSALLOC_LARGE);
         continue;
       } else {
         LOG(FATAL) << "Unreachable - page map type: " << static_cast<int>(page_map_entry);
@@ -1092,7 +1096,9 @@ size_t RosAlloc::BulkFree(Thread* self, void** ptrs, size_t num_ptrs) {
     DCHECK(run != nullptr);
     DCHECK_EQ(run->magic_num_, kMagicNum);
     // Set the bit in the bulk free bit map.
-    freed_bytes += run->AddToBulkFreeList(ptr);
+    size_t ni_temp_size = run->AddToBulkFreeList(ptr);
+    freed_bytes += ni_temp_size;
+    NiRecordFree(self, ni_temp_size, NI_FREE_ROSALLOC);
 #ifdef __ANDROID__
     if (!run->to_be_bulk_freed_) {
       run->to_be_bulk_freed_ = true;
