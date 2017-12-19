@@ -99,8 +99,12 @@ inline bool RosAllocSpace::CanAllocThreadLocal(Thread* self, size_t num_bytes) {
 inline mirror::Object* RosAllocSpace::AllocThreadLocal(Thread* self, size_t num_bytes,
                                                        size_t* bytes_allocated) {
   DCHECK(bytes_allocated != nullptr);
-  return reinterpret_cast<mirror::Object*>(
+  mirror::Object * ni_ret_obj = reinterpret_cast<mirror::Object*>(
       rosalloc_->AllocFromThreadLocalRun(self, num_bytes, bytes_allocated));
+  if (ni_ret_obj != nullptr) {
+      NiRecordAlloc(self, this, *bytes_allocated);
+  }
+  return ni_ret_obj;
 }
 
 inline size_t RosAllocSpace::MaxBytesBulkAllocatedForNonvirtual(size_t num_bytes) {

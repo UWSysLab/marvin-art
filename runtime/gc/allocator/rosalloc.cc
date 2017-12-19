@@ -634,8 +634,8 @@ inline void* RosAlloc::AllocFromCurrentRunUnlocked(Thread* self, size_t idx) {
     slot_addr = current_run->AllocSlot();
     // Must succeed now with a new run.
     DCHECK(slot_addr != nullptr);
-    NiRecordRosAllocAlloc(self, IndexToBracketSize(idx), NI_ROSALLOC_ALLOC_NORMAL);
   }
+  NiRecordRosAllocAlloc(self, IndexToBracketSize(idx), NI_ROSALLOC_ALLOC_NORMAL);
   return slot_addr;
 }
 
