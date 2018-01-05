@@ -68,8 +68,8 @@ void NiRecordRosAllocAlloc(Thread * self, size_t size, NiRosAllocAllocType type)
         break;
     }
 
-    instMutex.ExclusiveUnlock(self);
     maybePrintLog();
+    instMutex.ExclusiveUnlock(self);
 }
 
 void NiRecordRosAllocFree(Thread * self, size_t size, NiRosAllocFreeType type) {
@@ -86,8 +86,8 @@ void NiRecordRosAllocFree(Thread * self, size_t size, NiRosAllocFreeType type) {
         break;
     }
 
-    instMutex.ExclusiveUnlock(self);
     maybePrintLog();
+    instMutex.ExclusiveUnlock(self);
 }
 
 void NiRecordAlloc(Thread * self, gc::space::Space * space, size_t size) {
@@ -99,8 +99,8 @@ void NiRecordAlloc(Thread * self, gc::space::Space * space, size_t size) {
     totalAllocCounts[name]++;
     totalAllocSizes[name] += size;
 
-    instMutex.ExclusiveUnlock(self);
     maybePrintLog();
+    instMutex.ExclusiveUnlock(self);
 }
 
 void NiRecordFree(Thread * self, gc::space::Space * space, size_t size, int count) {
@@ -110,8 +110,8 @@ void NiRecordFree(Thread * self, gc::space::Space * space, size_t size, int coun
     currentAllocCounts[name] -= count;
     currentAllocSizes[name] -= size;
 
-    instMutex.ExclusiveUnlock(self);
     maybePrintLog();
+    instMutex.ExclusiveUnlock(self);
 }
 
 void NiSetHeap(gc::Heap * inHeap) {
