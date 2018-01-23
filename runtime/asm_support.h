@@ -211,9 +211,9 @@ ADD_TEST_EQ(MIRROR_OBJECT_CLASS_OFFSET, art::mirror::Object::ClassOffset().Int32
 ADD_TEST_EQ(MIRROR_OBJECT_LOCK_WORD_OFFSET, art::mirror::Object::MonitorOffset().Int32Value())
 
 #if defined(USE_BROOKS_READ_BARRIER)
-#define MIRROR_OBJECT_HEADER_SIZE 16
+#define MIRROR_OBJECT_HEADER_SIZE 24
 #else
-#define MIRROR_OBJECT_HEADER_SIZE 8
+#define MIRROR_OBJECT_HEADER_SIZE 16
 #endif
 ADD_TEST_EQ(size_t(MIRROR_OBJECT_HEADER_SIZE), sizeof(art::mirror::Object))
 
