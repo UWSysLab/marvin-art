@@ -44,6 +44,8 @@
 #include "thread-inl.h"
 #include "thread_list.h"
 
+#include "niel_instrumentation.h"
+
 namespace art {
 namespace gc {
 namespace collector {
@@ -253,6 +255,7 @@ void MarkSweep::RevokeAllThreadLocalAllocationStacks(Thread* self) {
 }
 
 void MarkSweep::MarkingPhase() {
+  NiStartAccessCount(this);
   TimingLogger::ScopedTiming t(__FUNCTION__, GetTimings());
   Thread* self = Thread::Current();
   BindBitmaps();
@@ -265,6 +268,7 @@ void MarkSweep::MarkingPhase() {
   MarkReachableObjects();
   // Pre-clean dirtied cards to reduce pauses.
   PreCleanCards();
+  NiFinishAccessCount(this);
 }
 
 class MarkSweep::ScanObjectVisitor {
@@ -1424,6 +1428,7 @@ void MarkSweep::ProcessMarkStack(bool paused) {
       }
       DCHECK(obj != nullptr);
       ScanObject(obj);
+      NiCountAccess(obj);
     }
   }
 }

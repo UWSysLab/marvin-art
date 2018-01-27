@@ -85,6 +85,16 @@ class MANAGED LOCKABLE Object {
     return OFFSET_OF_OBJECT_MEMBER(Object, klass_);
   }
 
+  bool GetAccessBit(uint32_t index) {
+    return (access_bits_ >> index) & 1;
+  }
+  void SetAccessBit(uint32_t index) {
+    access_bits_ = access_bits_ | (1 << index);
+  }
+  void ClearAccessBit(uint32_t index) {
+    access_bits_ = access_bits_ & (~(1 << index));
+  }
+
   template<VerifyObjectFlags kVerifyFlags = kDefaultVerifyFlags,
            ReadBarrierOption kReadBarrierOption = kWithReadBarrier>
   ALWAYS_INLINE Class* GetClass() SHARED_REQUIRES(Locks::mutator_lock_);

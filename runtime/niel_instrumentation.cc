@@ -2,10 +2,12 @@
 
 #include "base/mutex.h"
 #include "gc/allocator/rosalloc.h"
+#include "gc/collector/garbage_collector.h"
 #include "gc/heap.h"
 #include "gc/space/rosalloc_space.h"
 #include "gc/space/space.h"
 #include "globals.h"
+#include "mirror/class.h"
 #include "thread.h"
 
 #include <ctime>
@@ -13,7 +15,7 @@
 
 namespace art {
 
-const int LOG_INTERVAL_SECONDS = 5;
+const int LOG_INTERVAL_SECONDS = 10;
 
 Mutex instMutex("NielInstrumentationMutex", kLoggingLock);
 
@@ -43,6 +45,11 @@ std::map<std::string, int> totalAllocCounts;
 std::map<std::string, int> totalAllocSizes;
 
 /* End locked with instMutex */
+
+bool doingAccessCount = false;
+long objectsAccessed = 0;
+long totalObjects = 0;
+long errorCount = 0;
 
 void NiRecordRosAllocAlloc(Thread * self, size_t size, NiRosAllocAllocType type) {
     instMutex.ExclusiveLock(self);
@@ -116,6 +123,34 @@ void NiRecordFree(Thread * self, gc::space::Space * space, size_t size, int coun
 
 void NiSetHeap(gc::Heap * inHeap) {
     heap = inHeap;
+}
+
+void NiStartAccessCount(gc::collector::GarbageCollector * gc) {
+    if (errorCount > 0) {
+        LOG(INFO) << "NIEL (GC " << gc->GetName() << "): error count " << errorCount << " on prev GC";
+    }
+    doingAccessCount = true;
+    objectsAccessed = 0;
+    totalObjects = 0;
+    errorCount = 0;
+}
+
+void NiCountAccess(mirror::Object * object) {
+    if (doingAccessCount) {
+        if (object->GetAccessBit(0)) {
+            objectsAccessed += 1;
+            object->ClearAccessBit(0);
+        }
+        totalObjects += 1;
+    }
+    else {
+        errorCount += 1;
+    }
+}
+
+void NiFinishAccessCount(gc::collector::GarbageCollector * gc) {
+    doingAccessCount = false;
+    LOG(INFO) << "NIEL (GC " << gc->GetName() << "): objects accessed: " << objectsAccessed << " total objects: " << totalObjects;
 }
 
 void maybePrintLog() {

@@ -7,9 +7,15 @@ namespace art {
 
 namespace gc {
     class Heap;
+    namespace collector {
+        class GarbageCollector;
+    }
     namespace space {
         class Space;
     }
+}
+namespace mirror {
+    class Object;
 }
 class Thread;
 
@@ -28,6 +34,10 @@ void NiRecordAlloc(Thread * self, gc::space::Space * space, size_t size);
 void NiRecordFree(Thread * self, gc::space::Space * space, size_t size, int count);
 
 void NiSetHeap(gc::Heap * inHeap);
+
+void NiStartAccessCount(gc::collector::GarbageCollector * gc);
+void NiCountAccess(mirror::Object * object);
+void NiFinishAccessCount(gc::collector::GarbageCollector * gc);
 
 void maybePrintLog();
 void printHeap();
