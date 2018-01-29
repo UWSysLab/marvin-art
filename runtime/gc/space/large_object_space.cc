@@ -172,7 +172,7 @@ mirror::Object* LargeObjectMapSpace::Alloc(Thread* self, size_t num_bytes,
   total_bytes_allocated_ += allocation_size;
   ++num_objects_allocated_;
   ++total_objects_allocated_;
-  NiRecordAlloc(self, this, allocation_size);
+  nielinst::RecordAlloc(self, this, allocation_size);
   return obj;
 }
 
@@ -206,7 +206,7 @@ size_t LargeObjectMapSpace::Free(Thread* self, mirror::Object* ptr) {
   --num_objects_allocated_;
   delete mem_map;
   large_objects_.erase(it);
-  NiRecordFree(self, this, allocation_size, 1);
+  nielinst::RecordFree(self, this, allocation_size, 1);
   return allocation_size;
 }
 

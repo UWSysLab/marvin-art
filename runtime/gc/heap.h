@@ -119,11 +119,11 @@ static constexpr bool kUseThreadLocalAllocationStack = true;
 
 class Heap {
  public:
-  std::vector<space::Space*> ni_spaces_;
-  std::vector<collector::GarbageCollector*>* NiGetGarbageCollectors() { return &garbage_collectors_; }
-  collector::GarbageCollector* NiGetSemiSpace() { return (collector::GarbageCollector*)semi_space_collector_; }
-  collector::GarbageCollector* NiGetMarkCompact() { return (collector::GarbageCollector*)mark_compact_collector_; }
-  collector::GarbageCollector* NiGetConcurrentCopying() { return (collector::GarbageCollector*)concurrent_copying_collector_; }
+  std::vector<space::Space*> nielinst_spaces_;
+  std::vector<collector::GarbageCollector*>* nielinst_GetGarbageCollectors() { return &garbage_collectors_; }
+  collector::GarbageCollector* nielinst_GetSemiSpace() { return (collector::GarbageCollector*)semi_space_collector_; }
+  collector::GarbageCollector* nielinst_GetMarkCompact() { return (collector::GarbageCollector*)mark_compact_collector_; }
+  collector::GarbageCollector* nielinst_GetConcurrentCopying() { return (collector::GarbageCollector*)concurrent_copying_collector_; }
   // If true, measure the total allocation time.
   static constexpr size_t kDefaultStartingSize = kPageSize;
   static constexpr size_t kDefaultInitialSize = 2 * MB;

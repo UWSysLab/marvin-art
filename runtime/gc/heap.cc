@@ -1064,7 +1064,7 @@ void Heap::DeleteThreadPool() {
 
 void Heap::AddSpace(space::Space* space) {
   CHECK(space != nullptr);
-  ni_spaces_.push_back(space);
+  nielinst_spaces_.push_back(space);
   WriterMutexLock mu(Thread::Current(), *Locks::heap_bitmap_lock_);
   if (space->IsContinuousSpace()) {
     DCHECK(!space->IsDiscontinuousSpace());
@@ -1106,8 +1106,8 @@ void Heap::SetSpaceAsDefault(space::ContinuousSpace* continuous_space) {
 
 void Heap::RemoveSpace(space::Space* space) {
   DCHECK(space != nullptr);
-  auto ni_spaces_it = std::find(ni_spaces_.begin(), ni_spaces_.end(), space);
-  ni_spaces_.erase(ni_spaces_it);
+  auto nielinst_spaces_it = std::find(nielinst_spaces_.begin(), nielinst_spaces_.end(), space);
+  nielinst_spaces_.erase(nielinst_spaces_it);
   WriterMutexLock mu(Thread::Current(), *Locks::heap_bitmap_lock_);
   if (space->IsContinuousSpace()) {
     DCHECK(!space->IsDiscontinuousSpace());

@@ -255,7 +255,7 @@ void MarkSweep::RevokeAllThreadLocalAllocationStacks(Thread* self) {
 }
 
 void MarkSweep::MarkingPhase() {
-  NiStartAccessCount(this);
+  nielinst::StartAccessCount(this);
   TimingLogger::ScopedTiming t(__FUNCTION__, GetTimings());
   Thread* self = Thread::Current();
   BindBitmaps();
@@ -268,7 +268,7 @@ void MarkSweep::MarkingPhase() {
   MarkReachableObjects();
   // Pre-clean dirtied cards to reduce pauses.
   PreCleanCards();
-  NiFinishAccessCount(this);
+  nielinst::FinishAccessCount(this);
 }
 
 class MarkSweep::ScanObjectVisitor {
@@ -1428,7 +1428,7 @@ void MarkSweep::ProcessMarkStack(bool paused) {
       }
       DCHECK(obj != nullptr);
       ScanObject(obj);
-      NiCountAccess(obj);
+      nielinst::CountAccess(obj);
     }
   }
 }

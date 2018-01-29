@@ -18,6 +18,8 @@
 
 namespace art {
 
+namespace nielinst {
+
 const int LOG_INTERVAL_SECONDS = 10;
 
 Mutex instMutex("NielInstrumentationMutex", kLoggingLock);
@@ -55,23 +57,23 @@ long totalObjects = 0;
 long errorCount = 0;
 double totalPointerSizeFrac = 0.0; // of accessed objects
 
-void NiRecordRosAllocAlloc(Thread * self, size_t size, NiRosAllocAllocType type) {
+void RecordRosAllocAlloc(Thread * self, size_t size, RosAllocAllocType type) {
     instMutex.ExclusiveLock(self);
 
     switch(type) {
-      case NI_ROSALLOC_ALLOC_THREAD_LOCAL:
+      case ROSALLOC_ALLOC_THREAD_LOCAL:
         numTotalRosAllocThreadLocalAllocs++;
         sizeTotalRosAllocThreadLocalAllocs += size;
         numCurrentRosAllocAllocs++;
         sizeCurrentRosAllocAllocs += size;
         break;
-      case NI_ROSALLOC_ALLOC_NORMAL:
+      case ROSALLOC_ALLOC_NORMAL:
         numTotalRosAllocNormalAllocs++;
         sizeTotalRosAllocNormalAllocs += size;
         numCurrentRosAllocAllocs++;
         sizeCurrentRosAllocAllocs += size;
         break;
-      case NI_ROSALLOC_ALLOC_LARGE:
+      case ROSALLOC_ALLOC_LARGE:
         numTotalRosAllocLargeObjectAllocs++;
         sizeTotalRosAllocLargeObjectAllocs += size;
         numCurrentRosAllocLargeObjectAllocs++;
@@ -83,15 +85,15 @@ void NiRecordRosAllocAlloc(Thread * self, size_t size, NiRosAllocAllocType type)
     instMutex.ExclusiveUnlock(self);
 }
 
-void NiRecordRosAllocFree(Thread * self, size_t size, NiRosAllocFreeType type) {
+void RecordRosAllocFree(Thread * self, size_t size, RosAllocFreeType type) {
     instMutex.ExclusiveLock(self);
 
     switch(type) {
-      case NI_ROSALLOC_FREE_NORMAL_OR_THREAD_LOCAL:
+      case ROSALLOC_FREE_NORMAL_OR_THREAD_LOCAL:
         numCurrentRosAllocAllocs--;
         sizeCurrentRosAllocAllocs -= size;
         break;
-      case NI_ROSALLOC_FREE_LARGE:
+      case ROSALLOC_FREE_LARGE:
         numCurrentRosAllocLargeObjectAllocs--;
         sizeCurrentRosAllocLargeObjectAllocs -= size;
         break;
@@ -101,7 +103,7 @@ void NiRecordRosAllocFree(Thread * self, size_t size, NiRosAllocFreeType type) {
     instMutex.ExclusiveUnlock(self);
 }
 
-void NiRecordAlloc(Thread * self, gc::space::Space * space, size_t size) {
+void RecordAlloc(Thread * self, gc::space::Space * space, size_t size) {
     instMutex.ExclusiveLock(self);
 
     std::string name(space->GetName());
@@ -114,7 +116,7 @@ void NiRecordAlloc(Thread * self, gc::space::Space * space, size_t size) {
     instMutex.ExclusiveUnlock(self);
 }
 
-void NiRecordFree(Thread * self, gc::space::Space * space, size_t size, int count) {
+void RecordFree(Thread * self, gc::space::Space * space, size_t size, int count) {
     instMutex.ExclusiveLock(self);
 
     std::string name(space->GetName());
@@ -125,11 +127,11 @@ void NiRecordFree(Thread * self, gc::space::Space * space, size_t size, int coun
     instMutex.ExclusiveUnlock(self);
 }
 
-void NiSetHeap(gc::Heap * inHeap) {
+void SetHeap(gc::Heap * inHeap) {
     heap = inHeap;
 }
 
-void NiStartAccessCount(gc::collector::GarbageCollector * gc) {
+void StartAccessCount(gc::collector::GarbageCollector * gc) {
     if (errorCount > 0) {
         LOG(INFO) << "NIEL (GC " << gc->GetName() << "): error count " << errorCount << " on prev GC";
     }
@@ -140,7 +142,7 @@ void NiStartAccessCount(gc::collector::GarbageCollector * gc) {
     totalPointerSizeFrac = 0;
 }
 
-void NiCountAccess(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_) {
+void CountAccess(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_) {
     if (doingAccessCount) {
         if (object->GetAccessBit(0)) {
             objectsAccessed += 1;
@@ -165,7 +167,7 @@ void NiCountAccess(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_
     }
 }
 
-void NiFinishAccessCount(gc::collector::GarbageCollector * gc) {
+void FinishAccessCount(gc::collector::GarbageCollector * gc) {
     doingAccessCount = false;
     LOG(INFO) << "NIEL (GC " << gc->GetName() << "): objects accessed: " << objectsAccessed << " total objects: " << totalObjects;
     LOG(INFO) << "NIEL avg frac of accessed objects occupied by ptrs: " << totalPointerSizeFrac / objectsAccessed;
@@ -203,20 +205,20 @@ void printHeap() {
         return;
     }
 
-    LOG(INFO) << "NIEL num spaces " << heap->ni_spaces_.size();
-    for (auto it = heap->ni_spaces_.begin(); it != heap->ni_spaces_.end(); it++) {
+    LOG(INFO) << "NIEL num spaces " << heap->nielinst_spaces_.size();
+    for (auto it = heap->nielinst_spaces_.begin(); it != heap->nielinst_spaces_.end(); it++) {
         LOG(INFO) << "NIEL space " << (*it)->GetName()
                   << " continuous? " << (*it)->IsContinuousSpace()
                   << " discontinuous? " << (*it)->IsDiscontinuousSpace()
                   << " alloc? " << (*it)->IsAllocSpace()
                   ;
     }
-    LOG(INFO) << "NIEL num garbage collectors " << heap->NiGetGarbageCollectors()->size();
-    for (auto it = heap->NiGetGarbageCollectors()->begin(); it != heap->NiGetGarbageCollectors()->end(); it++) {
+    LOG(INFO) << "NIEL num garbage collectors " << heap->nielinst_GetGarbageCollectors()->size();
+    for (auto it = heap->nielinst_GetGarbageCollectors()->begin(); it != heap->nielinst_GetGarbageCollectors()->end(); it++) {
         LOG(INFO) << "NIEL garbage collector " << (*it)->GetName()
-                  << " semi_space? " << ((*it) == heap->NiGetSemiSpace())
-                  << " mark_compact? " << ((*it) == heap->NiGetMarkCompact())
-                  << " concurrent_copying? " << ((*it) == heap->NiGetConcurrentCopying())
+                  << " semi_space? " << ((*it) == heap->nielinst_GetSemiSpace())
+                  << " mark_compact? " << ((*it) == heap->nielinst_GetMarkCompact())
+                  << " concurrent_copying? " << ((*it) == heap->nielinst_GetConcurrentCopying())
                   ;
     }
 
@@ -229,4 +231,5 @@ void printHeap() {
     }
 }
 
-}
+} // namespace nielinst
+} // namespace art

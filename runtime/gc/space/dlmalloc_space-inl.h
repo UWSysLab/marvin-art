@@ -68,7 +68,7 @@ inline mirror::Object* DlMallocSpace::AllocWithoutGrowthLocked(
     DCHECK(bytes_allocated != nullptr);
     *bytes_allocated = allocation_size;
     *bytes_tl_bulk_allocated = allocation_size;
-    NiRecordAlloc(self, this, allocation_size);
+    nielinst::RecordAlloc(self, this, allocation_size);
   }
   return result;
 }

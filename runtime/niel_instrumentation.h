@@ -19,29 +19,32 @@ namespace mirror {
 }
 class Thread;
 
-enum NiRosAllocAllocType {
-    NI_ROSALLOC_ALLOC_THREAD_LOCAL, NI_ROSALLOC_ALLOC_NORMAL, NI_ROSALLOC_ALLOC_LARGE
+namespace nielinst {
+
+enum RosAllocAllocType {
+    ROSALLOC_ALLOC_THREAD_LOCAL, ROSALLOC_ALLOC_NORMAL, ROSALLOC_ALLOC_LARGE
 };
 
-enum NiRosAllocFreeType {
-    NI_ROSALLOC_FREE_NORMAL_OR_THREAD_LOCAL, NI_ROSALLOC_FREE_LARGE
+enum RosAllocFreeType {
+    ROSALLOC_FREE_NORMAL_OR_THREAD_LOCAL, ROSALLOC_FREE_LARGE
 };
 
-void NiRecordRosAllocAlloc(Thread * self, size_t size, NiRosAllocAllocType type);
-void NiRecordRosAllocFree(Thread * self, size_t size, NiRosAllocFreeType type);
+void RecordRosAllocAlloc(Thread * self, size_t size, RosAllocAllocType type);
+void RecordRosAllocFree(Thread * self, size_t size, RosAllocFreeType type);
 
-void NiRecordAlloc(Thread * self, gc::space::Space * space, size_t size);
-void NiRecordFree(Thread * self, gc::space::Space * space, size_t size, int count);
+void RecordAlloc(Thread * self, gc::space::Space * space, size_t size);
+void RecordFree(Thread * self, gc::space::Space * space, size_t size, int count);
 
-void NiSetHeap(gc::Heap * inHeap);
+void SetHeap(gc::Heap * inHeap);
 
-void NiStartAccessCount(gc::collector::GarbageCollector * gc);
-void NiCountAccess(mirror::Object * object);
-void NiFinishAccessCount(gc::collector::GarbageCollector * gc);
+void StartAccessCount(gc::collector::GarbageCollector * gc);
+void CountAccess(mirror::Object * object);
+void FinishAccessCount(gc::collector::GarbageCollector * gc);
 
 void maybePrintLog();
 void printHeap();
 
-}
+} // namespace nielinst
+} // namespace art
 
 #endif

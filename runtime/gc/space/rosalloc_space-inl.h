@@ -88,7 +88,7 @@ inline mirror::Object* RosAllocSpace::AllocCommon(Thread* self, size_t num_bytes
     DCHECK(bytes_tl_bulk_allocated != nullptr);
     *bytes_tl_bulk_allocated = rosalloc_bytes_tl_bulk_allocated;
   }
-  NiRecordAlloc(self, this, rosalloc_bytes_allocated);
+  nielinst::RecordAlloc(self, this, rosalloc_bytes_allocated);
   return result;
 }
 
@@ -102,7 +102,7 @@ inline mirror::Object* RosAllocSpace::AllocThreadLocal(Thread* self, size_t num_
   mirror::Object * ni_ret_obj = reinterpret_cast<mirror::Object*>(
       rosalloc_->AllocFromThreadLocalRun(self, num_bytes, bytes_allocated));
   if (ni_ret_obj != nullptr) {
-      NiRecordAlloc(self, this, *bytes_allocated);
+      nielinst::RecordAlloc(self, this, *bytes_allocated);
   }
   return ni_ret_obj;
 }
