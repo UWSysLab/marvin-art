@@ -8,6 +8,9 @@
 #include "gc/space/space.h"
 #include "globals.h"
 #include "mirror/class.h"
+#include "mirror/class-inl.h"
+#include "mirror/object.h"
+#include "mirror/object-inl.h"
 #include "thread.h"
 
 #include <ctime>
@@ -50,6 +53,7 @@ bool doingAccessCount = false;
 long objectsAccessed = 0;
 long totalObjects = 0;
 long errorCount = 0;
+double totalPointerSizeFrac = 0.0; // of accessed objects
 
 void NiRecordRosAllocAlloc(Thread * self, size_t size, NiRosAllocAllocType type) {
     instMutex.ExclusiveLock(self);
@@ -133,13 +137,26 @@ void NiStartAccessCount(gc::collector::GarbageCollector * gc) {
     objectsAccessed = 0;
     totalObjects = 0;
     errorCount = 0;
+    totalPointerSizeFrac = 0;
 }
 
-void NiCountAccess(mirror::Object * object) {
+void NiCountAccess(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_) {
     if (doingAccessCount) {
         if (object->GetAccessBit(0)) {
             objectsAccessed += 1;
             object->ClearAccessBit(0);
+
+            size_t objectSize = object->SizeOf();
+            mirror::Class * klass = object->GetClass();
+            uint32_t numPointers = klass->NumReferenceInstanceFields();
+            mirror::Class * superClass = klass->GetSuperClass();
+            while (superClass != nullptr) {
+                numPointers += superClass->NumReferenceInstanceFields();
+                superClass = superClass->GetSuperClass();
+            }
+            size_t sizeOfPointers = numPointers * sizeof(mirror::HeapReference<mirror::Object>);
+            double pointerSizeFrac = ((double)sizeOfPointers) / objectSize;
+            totalPointerSizeFrac += pointerSizeFrac;
         }
         totalObjects += 1;
     }
@@ -151,6 +168,7 @@ void NiCountAccess(mirror::Object * object) {
 void NiFinishAccessCount(gc::collector::GarbageCollector * gc) {
     doingAccessCount = false;
     LOG(INFO) << "NIEL (GC " << gc->GetName() << "): objects accessed: " << objectsAccessed << " total objects: " << totalObjects;
+    LOG(INFO) << "NIEL avg frac of accessed objects occupied by ptrs: " << totalPointerSizeFrac / objectsAccessed;
 }
 
 void maybePrintLog() {
