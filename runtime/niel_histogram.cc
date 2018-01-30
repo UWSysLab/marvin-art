@@ -1,10 +1,17 @@
 #include "niel_histogram.h"
 
+#include <iomanip>
 #include <sstream>
 
 namespace art {
 
 namespace nielinst {
+
+#define BIN_FMT std::defaultfloat << std::setprecision(3)
+#define SCALED_NUM_FMT std::fixed << std::setprecision(3)
+
+const std::string Histogram::NEWLINE_DELIM_("\n");
+const std::string Histogram::SPACE_DELIM_(" ");
 
 Histogram::Histogram(int numBins, double min, double max) {
     bins_ = new int[numBins];
@@ -56,16 +63,19 @@ double Histogram::GetAverage() {
     return sum_ / Count();
 }
 
-std::string Histogram::Print(bool scaled) {
+std::string Histogram::Print(bool scaled, bool separateLines) {
     int count = Count();
     double binWidth = (max_ - min_) / numBins_;
 
+    std::string delim = (separateLines ? NEWLINE_DELIM_ : SPACE_DELIM_);
+
     std::stringstream output;
 
-    output << "[-inf," << min_ << "): ";
+    output << BIN_FMT << "[-inf," << min_ << "): ";
     if (scaled) {
+        output << SCALED_NUM_FMT;
         if (count == 0) {
-            output << "0";
+            output << 0;
         }
         else {
             output << (double)belowMin_ / count;
@@ -74,15 +84,16 @@ std::string Histogram::Print(bool scaled) {
     else {
         output << belowMin_;
     }
-    output << " ";
+    output << delim;
 
     for (int i = 0; i < numBins_; i++) {
         double binStart = min_ + i * binWidth;
         double binEnd = min_ + (i + 1) * binWidth;
-        output << "[" << binStart << "," << binEnd << "): ";
+        output << BIN_FMT << "[" << binStart << "," << binEnd << "): ";
         if (scaled) {
+            output << SCALED_NUM_FMT;
             if (count == 0) {
-                output << "0";
+                output << 0;
             }
             else {
                 output << (double)bins_[i] / count;
@@ -91,13 +102,14 @@ std::string Histogram::Print(bool scaled) {
         else {
             output << bins_[i];
         }
-        output << " ";
+        output << delim;
     }
 
-    output << "[" << max_ << ",inf): ";
+    output << BIN_FMT << "[" << max_ << ",inf): ";
     if (scaled) {
+        output << SCALED_NUM_FMT;
         if (count == 0) {
-            output << "0";
+            output << 0;
         }
         else {
             output << (double)aboveMax_ / count;

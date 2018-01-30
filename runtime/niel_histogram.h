@@ -15,8 +15,11 @@ class Histogram {
     int Count();
     void Clear();
     double GetAverage();
-    std::string Print(bool scaled);
+    std::string Print(bool scaled, bool separateLines);
   private:
+    static const std::string NEWLINE_DELIM_;
+    static const std::string SPACE_DELIM_;
+
     int numBins_;
     double min_;
     double max_;
