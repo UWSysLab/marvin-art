@@ -12,13 +12,20 @@ class Histogram {
     Histogram(int numBins, double min, double max);
     ~Histogram();
     void Add(double num);
+    int Count();
     void Clear();
+    double GetAverage();
     std::string Print(bool scaled);
   private:
-    int * bins_;
     int numBins_;
     double min_;
     double max_;
+
+    /* state that is reset on Clear() */
+    int * bins_;
+    int belowMin_;
+    int aboveMax_;
+    double sum_; // used for average
 };
 
 } // namespace nielinst
