@@ -13,22 +13,30 @@
 #include "mirror/object-inl.h"
 #include "thread.h"
 
+#include <cstring>
 #include <ctime>
 #include <map>
+
+#include "niel_histogram.h"
 
 namespace art {
 
 namespace nielinst {
 
+/* Constants */
 const int LOG_INTERVAL_SECONDS = 10;
 
+/* Internal functions */
+void maybePrintLog();
+void printAllocCounts();
+void printHeap();
+
+/* Variables */
 Mutex instMutex("NielInstrumentationMutex", kLoggingLock);
-
 gc::Heap * heap = NULL;
-
 time_t lastLogTime;
 
-/* Locked with instMutex */
+/*     Locked with instMutex */
 long numTotalRosAllocThreadLocalAllocs = 0;
 long numTotalRosAllocNormalAllocs = 0;
 long numTotalRosAllocLargeObjectAllocs = 0;
@@ -48,14 +56,30 @@ std::map<std::string, int> currentAllocSizes;
 
 std::map<std::string, int> totalAllocCounts;
 std::map<std::string, int> totalAllocSizes;
-
-/* End locked with instMutex */
+/*     End locked with instMutex */
 
 bool doingAccessCount = false;
+
 long objectsAccessed = 0;
 long totalObjects = 0;
 long errorCount = 0;
-double totalPointerSizeFrac = 0.0; // of accessed objects
+long shenanigansCount = 0; // used for misc debugging
+
+long accessedTotalObjectSize = 0;
+long accessedTotalPointerSize = 0;
+long untouchedTotalObjectSize = 0;
+long untouchedTotalPointerSize = 0;
+long smallObjectTotalObjectSize = 0;
+long smallObjectTotalPointerSize = 0;
+long largeObjectTotalObjectSize = 0;
+long largeObjectTotalPointerSize = 0;
+
+Histogram accessedPointerFracHist(10, 0, 1);
+Histogram untouchedPointerFracHist(10, 0, 1);
+Histogram accessedObjectSizeHist(10, 0, 400);
+Histogram untouchedObjectSizeHist(10, 0, 400);
+Histogram smallObjectPointerFracHist(10, 0, 1); // objects <=200 bytes
+Histogram largeObjectPointerFracHist(10, 0, 1); // objects >200 bytes
 
 void RecordRosAllocAlloc(Thread * self, size_t size, RosAllocAllocType type) {
     instMutex.ExclusiveLock(self);
@@ -136,29 +160,68 @@ void StartAccessCount(gc::collector::GarbageCollector * gc) {
         LOG(INFO) << "NIEL (GC " << gc->GetName() << "): error count " << errorCount << " on prev GC";
     }
     doingAccessCount = true;
+
     objectsAccessed = 0;
     totalObjects = 0;
     errorCount = 0;
-    totalPointerSizeFrac = 0;
+    shenanigansCount = 0;
+
+    accessedTotalObjectSize = 0;
+    accessedTotalPointerSize = 0;
+    untouchedTotalObjectSize = 0;
+    untouchedTotalPointerSize = 0;
+    smallObjectTotalObjectSize = 0;
+    smallObjectTotalPointerSize = 0;
+    largeObjectTotalObjectSize = 0;
+    largeObjectTotalPointerSize = 0;
+
+    accessedPointerFracHist.Clear();
+    untouchedPointerFracHist.Clear();
+    accessedObjectSizeHist.Clear();
+    untouchedObjectSizeHist.Clear();
+    smallObjectPointerFracHist.Clear();
+    largeObjectPointerFracHist.Clear();
 }
 
 void CountAccess(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_) {
     if (doingAccessCount) {
-        if (object->GetAccessBit(0)) {
-            objectsAccessed += 1;
-            object->ClearAccessBit(0);
+        object->SetAccessBit(1);
+        size_t objectSize = object->SizeOf();
+        mirror::Class * klass = object->GetClass();
+        object->ClearAccessBit(1);
+        uint32_t numPointers = klass->NumReferenceInstanceFields();
+        mirror::Class * superClass = klass->GetSuperClass();
+        while (superClass != nullptr) {
+            numPointers += superClass->NumReferenceInstanceFields();
+            superClass = superClass->GetSuperClass();
+        }
+        size_t sizeOfPointers = numPointers * sizeof(mirror::HeapReference<mirror::Object>);
+        double pointerSizeFrac = ((double)sizeOfPointers) / objectSize;
 
-            size_t objectSize = object->SizeOf();
-            mirror::Class * klass = object->GetClass();
-            uint32_t numPointers = klass->NumReferenceInstanceFields();
-            mirror::Class * superClass = klass->GetSuperClass();
-            while (superClass != nullptr) {
-                numPointers += superClass->NumReferenceInstanceFields();
-                superClass = superClass->GetSuperClass();
-            }
-            size_t sizeOfPointers = numPointers * sizeof(mirror::HeapReference<mirror::Object>);
-            double pointerSizeFrac = ((double)sizeOfPointers) / objectSize;
-            totalPointerSizeFrac += pointerSizeFrac;
+        if (objectSize > 200) {
+            largeObjectPointerFracHist.Add(pointerSizeFrac);
+            largeObjectTotalPointerSize += sizeOfPointers;
+            largeObjectTotalObjectSize += objectSize;
+        }
+        else {
+            smallObjectPointerFracHist.Add(pointerSizeFrac);
+            smallObjectTotalPointerSize += sizeOfPointers;
+            smallObjectTotalObjectSize += objectSize;
+        }
+
+        if (object->GetAccessBit(0)) {
+            object->ClearAccessBit(0);
+            objectsAccessed += 1;
+            accessedPointerFracHist.Add(pointerSizeFrac);
+            accessedObjectSizeHist.Add(objectSize);
+            accessedTotalPointerSize += sizeOfPointers;
+            accessedTotalObjectSize += objectSize;
+        }
+        else {
+            untouchedPointerFracHist.Add(pointerSizeFrac);
+            untouchedObjectSizeHist.Add(objectSize);
+            untouchedTotalPointerSize += sizeOfPointers;
+            untouchedTotalObjectSize += objectSize;
         }
         totalObjects += 1;
     }
@@ -169,35 +232,70 @@ void CountAccess(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_) 
 
 void FinishAccessCount(gc::collector::GarbageCollector * gc) {
     doingAccessCount = false;
-    LOG(INFO) << "NIEL (GC " << gc->GetName() << "): objects accessed: " << objectsAccessed << " total objects: " << totalObjects;
-    LOG(INFO) << "NIEL avg frac of accessed objects occupied by ptrs: " << totalPointerSizeFrac / objectsAccessed;
+    if (strstr(gc->GetName(), "partial concurrent mark sweep")) {
+        LOG(INFO) << "NIEL (GC " << gc->GetName() << "): objects accessed: "
+                  << objectsAccessed << " total objects: " << totalObjects
+                  << " shenanigans: " << shenanigansCount;
+        LOG(INFO) << "NIEL accessed total pointer frac: "
+                  << (double)accessedTotalPointerSize / accessedTotalObjectSize
+                  << " pointer size: " << accessedTotalPointerSize
+                  << " object size: " << accessedTotalObjectSize;
+        LOG(INFO) << "NIEL untouched total pointer frac: "
+                  << (double)untouchedTotalPointerSize / untouchedTotalObjectSize
+                  << " pointer size: " << untouchedTotalPointerSize
+                  << " object size: " << untouchedTotalObjectSize;
+        LOG(INFO) << "NIEL small total pointer frac: "
+                  << (double)smallObjectTotalPointerSize / smallObjectTotalObjectSize
+                  << " pointer size: " << smallObjectTotalPointerSize
+                  << " object size: " << smallObjectTotalObjectSize;
+        LOG(INFO) << "NIEL large total pointer frac: "
+                  << (double)largeObjectTotalPointerSize / largeObjectTotalObjectSize
+                  << " pointer size: " << largeObjectTotalPointerSize
+                  << " object size: " << largeObjectTotalObjectSize;
+        LOG(INFO) << "NIEL pointer frac hist of accessed objects (scaled):\n"
+                  << accessedPointerFracHist.Print(true, true);
+        LOG(INFO) << "NIEL pointer frac hist of untouched objects (scaled):\n"
+                  << untouchedPointerFracHist.Print(true, true);
+        LOG(INFO) << "NIEL object size hist of accessed objects(scaled):\n"
+                  << accessedObjectSizeHist.Print(true, true);
+        LOG(INFO) << "NIEL object size hist of untouched objects(scaled):\n"
+                  << untouchedObjectSizeHist.Print(true, true);
+        LOG(INFO) << "NIEL pointer frac hist of small objects (scaled):\n"
+                  << smallObjectPointerFracHist.Print(true, true);
+        LOG(INFO) << "NIEL pointer frac hist of large objects (scaled):\n"
+                  << largeObjectPointerFracHist.Print(true, true);
+    }
 }
 
 void maybePrintLog() {
     time_t currentTime = time(NULL);
     if (difftime(currentTime, lastLogTime) > LOG_INTERVAL_SECONDS) {
-        for (auto it = currentAllocCounts.begin(); it != currentAllocCounts.end(); it++) {
-            std::string name = it->first;
-            LOG(INFO) << "NIEL space |" << name << "| curr count: " << currentAllocCounts[name]
-                      << " curr size: " << currentAllocSizes[name] << " total count: "
-                      << totalAllocCounts[name] << " total size: " << totalAllocSizes[name]
-                      ;
-        }
-        LOG(INFO) << "NIEL RosAlloc curr thread-local/normal count: " << numCurrentRosAllocAllocs
-                  << " size: " << sizeCurrentRosAllocAllocs
-                  << " curr large count: " << numCurrentRosAllocLargeObjectAllocs
-                  << " size: " << sizeCurrentRosAllocLargeObjectAllocs
-                  ;
-        LOG(INFO) << "NIEL RosAlloc total thread-local count: " << numTotalRosAllocThreadLocalAllocs
-                  << " size: " << sizeTotalRosAllocThreadLocalAllocs
-                  << " total normal count: " << numTotalRosAllocNormalAllocs
-                  << " size: " << sizeTotalRosAllocNormalAllocs
-                  << " total large count: " << numTotalRosAllocLargeObjectAllocs
-                  << " size: " << sizeTotalRosAllocLargeObjectAllocs
-                  ;
+        //printAllocCounts();
         //printHeap();
         lastLogTime = currentTime;
     }
+}
+
+void printAllocCounts() {
+    for (auto it = currentAllocCounts.begin(); it != currentAllocCounts.end(); it++) {
+        std::string name = it->first;
+        LOG(INFO) << "NIEL space |" << name << "| curr count: " << currentAllocCounts[name]
+                  << " curr size: " << currentAllocSizes[name] << " total count: "
+                  << totalAllocCounts[name] << " total size: " << totalAllocSizes[name]
+                  ;
+    }
+    LOG(INFO) << "NIEL RosAlloc curr thread-local/normal count: " << numCurrentRosAllocAllocs
+              << " size: " << sizeCurrentRosAllocAllocs
+              << " curr large count: " << numCurrentRosAllocLargeObjectAllocs
+              << " size: " << sizeCurrentRosAllocLargeObjectAllocs
+              ;
+    LOG(INFO) << "NIEL RosAlloc total thread-local count: " << numTotalRosAllocThreadLocalAllocs
+              << " size: " << sizeTotalRosAllocThreadLocalAllocs
+              << " total normal count: " << numTotalRosAllocNormalAllocs
+              << " size: " << sizeTotalRosAllocNormalAllocs
+              << " total large count: " << numTotalRosAllocLargeObjectAllocs
+              << " size: " << sizeTotalRosAllocLargeObjectAllocs
+              ;
 }
 
 void printHeap() {

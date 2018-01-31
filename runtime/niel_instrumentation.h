@@ -41,9 +41,6 @@ void StartAccessCount(gc::collector::GarbageCollector * gc);
 void CountAccess(mirror::Object * object);
 void FinishAccessCount(gc::collector::GarbageCollector * gc);
 
-void maybePrintLog();
-void printHeap();
-
 } // namespace nielinst
 } // namespace art
 
