@@ -12,7 +12,7 @@ class Histogram {
     Histogram(int numBins, double min, double max);
     ~Histogram();
     void Add(double num);
-    int Count();
+    long Count();
     void Clear();
     double GetAverage();
     std::string Print(bool scaled, bool separateLines);
@@ -25,9 +25,9 @@ class Histogram {
     double max_;
 
     /* state that is reset on Clear() */
-    int * bins_;
-    int belowMin_;
-    int aboveMax_;
+    long * bins_;
+    long belowMin_;
+    long aboveMax_;
     double sum_; // used for average
 };
 

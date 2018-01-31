@@ -7,14 +7,14 @@ namespace art {
 
 namespace nielinst {
 
-#define BIN_FMT std::defaultfloat << std::setprecision(3)
+#define BIN_FMT std::defaultfloat << std::setprecision(6)
 #define SCALED_NUM_FMT std::fixed << std::setprecision(3)
 
 const std::string Histogram::NEWLINE_DELIM_("\n");
 const std::string Histogram::SPACE_DELIM_(" ");
 
 Histogram::Histogram(int numBins, double min, double max) {
-    bins_ = new int[numBins];
+    bins_ = new long[numBins];
     belowMin_ = 0;
     aboveMax_ = 0;
     min_ = min;
@@ -51,8 +51,8 @@ void Histogram::Clear() {
     sum_ = 0;
 }
 
-int Histogram::Count() {
-    int count = 0;
+long Histogram::Count() {
+    long count = 0;
     for (int i = 0; i < numBins_; i++) {
         count += bins_[i];
     }
@@ -64,7 +64,7 @@ double Histogram::GetAverage() {
 }
 
 std::string Histogram::Print(bool scaled, bool separateLines) {
-    int count = Count();
+    long count = Count();
     double binWidth = (max_ - min_) / numBins_;
 
     std::string delim = (separateLines ? NEWLINE_DELIM_ : SPACE_DELIM_);
