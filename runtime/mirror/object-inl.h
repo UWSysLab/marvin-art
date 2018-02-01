@@ -764,6 +764,9 @@ inline void Object::SetField64Volatile(MemberOffset field_offset, int64_t new_va
 
 template<typename kSize, bool kIsVolatile>
 inline void Object::SetField(MemberOffset field_offset, kSize new_value) {
+  if (!GetIgnoreAccessFlag()) {
+    SetWriteBit();
+  }
   uint8_t* raw_addr = reinterpret_cast<uint8_t*>(this) + field_offset.Int32Value();
   kSize* addr = reinterpret_cast<kSize*>(raw_addr);
   if (kIsVolatile) {
@@ -775,8 +778,8 @@ inline void Object::SetField(MemberOffset field_offset, kSize new_value) {
 
 template<typename kSize, bool kIsVolatile>
 inline kSize Object::GetField(MemberOffset field_offset) {
-  if (!GetIgnoreReadFlag()) {
-      SetAccessBit();
+  if (!GetIgnoreAccessFlag()) {
+      SetReadBit();
   }
   const uint8_t* raw_addr = reinterpret_cast<const uint8_t*>(this) + field_offset.Int32Value();
   const kSize* addr = reinterpret_cast<const kSize*>(raw_addr);
@@ -824,8 +827,8 @@ inline bool Object::CasFieldStrongSequentiallyConsistent64(MemberOffset field_of
 template<class T, VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrierOption,
          bool kIsVolatile>
 inline T* Object::GetFieldObject(MemberOffset field_offset) {
-  if (!GetIgnoreReadFlag()) {
-      SetAccessBit();
+  if (!GetIgnoreAccessFlag()) {
+      SetReadBit();
   }
   if (kVerifyFlags & kVerifyThis) {
     VerifyObject(this);
@@ -852,6 +855,9 @@ template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVer
     bool kIsVolatile>
 inline void Object::SetFieldObjectWithoutWriteBarrier(MemberOffset field_offset,
                                                       Object* new_value) {
+  if (!GetIgnoreAccessFlag()) {
+    SetWriteBit();
+  }
   if (kCheckTransaction) {
     DCHECK_EQ(kTransactionActive, Runtime::Current()->IsActiveTransaction());
   }
@@ -1132,7 +1138,7 @@ template <bool kVisitNativeRoots,
           typename JavaLangRefVisitor>
 inline void Object::VisitReferences(const Visitor& visitor,
                                     const JavaLangRefVisitor& ref_visitor) {
-  SetIgnoreReadFlag();
+  SetIgnoreAccessFlag();
   mirror::Class* klass = GetClass<kVerifyFlags, kReadBarrierOption>();
   visitor(this, ClassOffset(), false);
   const uint32_t class_flags = klass->GetClassFlags<kVerifyNone>();
@@ -1186,7 +1192,7 @@ inline void Object::VisitReferences(const Visitor& visitor,
       }
     }
   }
-  ClearIgnoreReadFlag();
+  ClearIgnoreAccessFlag();
 }
 }  // namespace mirror
 }  // namespace art

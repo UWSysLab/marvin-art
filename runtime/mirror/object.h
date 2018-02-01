@@ -100,23 +100,33 @@ class MANAGED LOCKABLE Object {
   }
   static bool TestBitMethods();
 
-  bool GetIgnoreReadFlag() {
+  bool GetIgnoreAccessFlag() {
+    return (bool)GetBits(access_data_, 2, 1);
+  }
+  void SetIgnoreAccessFlag() {
+    SetBits(&access_data_, 2, 1);
+  }
+  void ClearIgnoreAccessFlag() {
+    ClearBits(&access_data_, 2, 1);
+  }
+
+  bool GetWriteBit() {
     return (bool)GetBits(access_data_, 1, 1);
   }
-  void SetIgnoreReadFlag() {
+  void SetWriteBit() {
     SetBits(&access_data_, 1, 1);
   }
-  void ClearIgnoreReadFlag() {
+  void ClearWriteBit() {
     ClearBits(&access_data_, 1, 1);
   }
 
-  bool GetAccessBit() {
+  bool GetReadBit() {
     return (bool)GetBits(access_data_, 0, 1);
   }
-  void SetAccessBit() {
+  void SetReadBit() {
     SetBits(&access_data_, 0, 1);
   }
-  void ClearAccessBit() {
+  void ClearReadBit() {
     ClearBits(&access_data_, 0, 1);
   }
 

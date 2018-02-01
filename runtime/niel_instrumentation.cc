@@ -60,24 +60,26 @@ std::map<std::string, int> totalAllocSizes;
 
 bool doingAccessCount = false;
 
-long objectsAccessed = 0;
+long objectsRead = 0;
+long objectsWritten = 0;
+long objectsReadAndWritten = 0;
 long totalObjects = 0;
 long errorCount = 0;
 long shenanigansCount = 0; // used for misc debugging
 
-long accessedTotalObjectSize = 0;
-long accessedTotalPointerSize = 0;
-long untouchedTotalObjectSize = 0;
-long untouchedTotalPointerSize = 0;
+long readTotalObjectSize = 0;
+long readTotalPointerSize = 0;
+long unreadTotalObjectSize = 0;
+long unreadTotalPointerSize = 0;
 long smallObjectTotalObjectSize = 0;
 long smallObjectTotalPointerSize = 0;
 long largeObjectTotalObjectSize = 0;
 long largeObjectTotalPointerSize = 0;
 
-Histogram accessedPointerFracHist(10, 0, 1);
-Histogram untouchedPointerFracHist(10, 0, 1);
-Histogram accessedObjectSizeHist(10, 0, 400);
-Histogram untouchedObjectSizeHist(10, 0, 400);
+Histogram readPointerFracHist(10, 0, 1);
+Histogram unreadPointerFracHist(10, 0, 1);
+Histogram readObjectSizeHist(10, 0, 400);
+Histogram unreadObjectSizeHist(10, 0, 400);
 Histogram smallObjectPointerFracHist(10, 0, 1); // objects <=200 bytes
 Histogram largeObjectPointerFracHist(10, 0, 1); // objects >200 bytes
 
@@ -161,34 +163,36 @@ void StartAccessCount(gc::collector::GarbageCollector * gc) {
     }
     doingAccessCount = true;
 
-    objectsAccessed = 0;
+    objectsRead = 0;
+    objectsWritten = 0;
+    objectsReadAndWritten = 0;
     totalObjects = 0;
     errorCount = 0;
     shenanigansCount = 0;
 
-    accessedTotalObjectSize = 0;
-    accessedTotalPointerSize = 0;
-    untouchedTotalObjectSize = 0;
-    untouchedTotalPointerSize = 0;
+    readTotalObjectSize = 0;
+    readTotalPointerSize = 0;
+    unreadTotalObjectSize = 0;
+    unreadTotalPointerSize = 0;
     smallObjectTotalObjectSize = 0;
     smallObjectTotalPointerSize = 0;
     largeObjectTotalObjectSize = 0;
     largeObjectTotalPointerSize = 0;
 
-    accessedPointerFracHist.Clear();
-    untouchedPointerFracHist.Clear();
-    accessedObjectSizeHist.Clear();
-    untouchedObjectSizeHist.Clear();
+    readPointerFracHist.Clear();
+    unreadPointerFracHist.Clear();
+    readObjectSizeHist.Clear();
+    unreadObjectSizeHist.Clear();
     smallObjectPointerFracHist.Clear();
     largeObjectPointerFracHist.Clear();
 }
 
 void CountAccess(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_) {
     if (doingAccessCount) {
-        object->SetIgnoreReadFlag();
+        object->SetIgnoreAccessFlag();
         size_t objectSize = object->SizeOf();
         mirror::Class * klass = object->GetClass();
-        object->ClearIgnoreReadFlag();
+        object->ClearIgnoreAccessFlag();
         uint32_t numPointers = klass->NumReferenceInstanceFields();
         mirror::Class * superClass = klass->GetSuperClass();
         while (superClass != nullptr) {
@@ -209,20 +213,35 @@ void CountAccess(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_) 
             smallObjectTotalObjectSize += objectSize;
         }
 
-        if (object->GetAccessBit()) {
-            object->ClearAccessBit();
-            objectsAccessed += 1;
-            accessedPointerFracHist.Add(pointerSizeFrac);
-            accessedObjectSizeHist.Add(objectSize);
-            accessedTotalPointerSize += sizeOfPointers;
-            accessedTotalObjectSize += objectSize;
+        bool wasRead = false;
+        bool wasWritten = false;
+
+        if (object->GetReadBit()) {
+            object->ClearReadBit();
+            objectsRead += 1;
+            wasRead = true;
+            readPointerFracHist.Add(pointerSizeFrac);
+            readObjectSizeHist.Add(objectSize);
+            readTotalPointerSize += sizeOfPointers;
+            readTotalObjectSize += objectSize;
         }
         else {
-            untouchedPointerFracHist.Add(pointerSizeFrac);
-            untouchedObjectSizeHist.Add(objectSize);
-            untouchedTotalPointerSize += sizeOfPointers;
-            untouchedTotalObjectSize += objectSize;
+            unreadPointerFracHist.Add(pointerSizeFrac);
+            unreadObjectSizeHist.Add(objectSize);
+            unreadTotalPointerSize += sizeOfPointers;
+            unreadTotalObjectSize += objectSize;
         }
+
+        if (object->GetWriteBit()) {
+            object->ClearWriteBit();
+            objectsWritten += 1;
+            wasWritten = true;
+        }
+
+        if (wasRead && wasWritten) {
+            objectsReadAndWritten += 1;
+        }
+
         totalObjects += 1;
     }
     else {
@@ -233,17 +252,18 @@ void CountAccess(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_) 
 void FinishAccessCount(gc::collector::GarbageCollector * gc) {
     doingAccessCount = false;
     if (strstr(gc->GetName(), "partial concurrent mark sweep")) {
-        LOG(INFO) << "NIEL (GC " << gc->GetName() << "): objects accessed: "
-                  << objectsAccessed << " total objects: " << totalObjects
+        LOG(INFO) << "NIEL (GC " << gc->GetName() << "): objects read: " << objectsRead
+                  << " objects written: " << objectsWritten << " objects read and written: "
+                  << objectsReadAndWritten << " total objects: " << totalObjects
                   << " shenanigans: " << shenanigansCount;
-        LOG(INFO) << "NIEL accessed total pointer frac: "
-                  << (double)accessedTotalPointerSize / accessedTotalObjectSize
-                  << " pointer size: " << accessedTotalPointerSize
-                  << " object size: " << accessedTotalObjectSize;
-        LOG(INFO) << "NIEL untouched total pointer frac: "
-                  << (double)untouchedTotalPointerSize / untouchedTotalObjectSize
-                  << " pointer size: " << untouchedTotalPointerSize
-                  << " object size: " << untouchedTotalObjectSize;
+        LOG(INFO) << "NIEL total pointer frac of read objects: "
+                  << (double)readTotalPointerSize / readTotalObjectSize
+                  << " pointer size: " << readTotalPointerSize
+                  << " object size: " << readTotalObjectSize;
+        LOG(INFO) << "NIEL unread total pointer frac: "
+                  << (double)unreadTotalPointerSize / unreadTotalObjectSize
+                  << " pointer size: " << unreadTotalPointerSize
+                  << " object size: " << unreadTotalObjectSize;
         LOG(INFO) << "NIEL small total pointer frac: "
                   << (double)smallObjectTotalPointerSize / smallObjectTotalObjectSize
                   << " pointer size: " << smallObjectTotalPointerSize
@@ -252,14 +272,14 @@ void FinishAccessCount(gc::collector::GarbageCollector * gc) {
                   << (double)largeObjectTotalPointerSize / largeObjectTotalObjectSize
                   << " pointer size: " << largeObjectTotalPointerSize
                   << " object size: " << largeObjectTotalObjectSize;
-        LOG(INFO) << "NIEL pointer frac hist of accessed objects (scaled):\n"
-                  << accessedPointerFracHist.Print(true, true);
-        LOG(INFO) << "NIEL pointer frac hist of untouched objects (scaled):\n"
-                  << untouchedPointerFracHist.Print(true, true);
-        LOG(INFO) << "NIEL object size hist of accessed objects(scaled):\n"
-                  << accessedObjectSizeHist.Print(true, true);
-        LOG(INFO) << "NIEL object size hist of untouched objects(scaled):\n"
-                  << untouchedObjectSizeHist.Print(true, true);
+        LOG(INFO) << "NIEL pointer frac hist of read objects (scaled):\n"
+                  << readPointerFracHist.Print(true, true);
+        LOG(INFO) << "NIEL pointer frac hist of unread objects (scaled):\n"
+                  << unreadPointerFracHist.Print(true, true);
+        LOG(INFO) << "NIEL object size hist of read objects(scaled):\n"
+                  << readObjectSizeHist.Print(true, true);
+        LOG(INFO) << "NIEL object size hist of unread objects(scaled):\n"
+                  << unreadObjectSizeHist.Print(true, true);
         LOG(INFO) << "NIEL pointer frac hist of small objects (scaled):\n"
                   << smallObjectPointerFracHist.Print(true, true);
         LOG(INFO) << "NIEL pointer frac hist of large objects (scaled):\n"
