@@ -94,6 +94,10 @@ class MANAGED LOCKABLE Object {
   static void ClearBits(uint32_t * data, uint32_t offset, uint32_t width) {
     *data = *data & ~((0xffffffff >> (32 - width)) << offset);
   }
+  static void AssignBits(uint32_t * data, uint32_t val, uint32_t offset, uint32_t width) {
+    ClearBits(data, offset, width);
+    *data = *data | ((val << offset) & (0xffffffff >> (32 - width - offset)));
+  }
   static bool TestBitMethods();
 
   bool GetIgnoreReadFlag() {

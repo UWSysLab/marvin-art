@@ -250,54 +250,55 @@ ArtField* Object::FindFieldByOffset(MemberOffset offset) {
 }
 
 bool Object::TestBitMethods() {
+    const int NUM_TESTS = 8;
+    uint32_t result[NUM_TESTS];
+    uint32_t expected[NUM_TESTS];
+
     bool passed = true;
 
-    uint32_t data1 = 0xabcdef12;
-    uint32_t result1 = GetBits(data1, 4, 12);
-    uint32_t expected1 = 0xef1;
-    if (result1 != expected1) {
-        passed = false;
-        LOG(ERROR) << "Object::TestBitMethods() test 1 failed";
-    }
+    uint32_t data0 = 0xabcdef12;
+    result[0] = GetBits(data0, 4, 12);
+    expected[0] = 0xef1;
 
-    uint32_t data2 = 0xffffffff;
-    uint32_t result2 = GetBits(data2, 17, 7);
-    uint32_t expected2 = 0x7f;
-    if (result2 != expected2) {
-        passed = false;
-        LOG(ERROR) << "Object::TestBitMethods() test 2 failed";
-    }
+    uint32_t data1 = 0xffffffff;
+    result[1] = GetBits(data1, 17, 7);
+    expected[1] = 0x7f;
+
+    uint32_t data2 = 0x00000000;
+    SetBits(&data2, 4, 12);
+    result[2] = data2;
+    expected[2] = 0x0000fff0;
 
     uint32_t data3 = 0x00000000;
-    SetBits(&data3, 4, 12);
-    uint32_t expected3 = 0x0000fff0;
-    if (data3 != expected3) {
-        passed = false;
-        LOG(ERROR) << "Object::TestBitMethods() test 3 failed";
-    }
+    SetBits(&data3, 17, 7);
+    result[3] = data3;
+    expected[3] = 0x00fe0000;
 
-    uint32_t data4 = 0x00000000;
-    SetBits(&data4, 17, 7);
-    uint32_t expected4 = 0x00fe0000;
-    if (data4 != expected4) {
-        passed = false;
-        LOG(ERROR) << "Object::TestBitMethods() test 4 failed";
-    }
+    uint32_t data4 = 0xffffffff;
+    ClearBits(&data4, 4, 12);
+    result[4] = data4;
+    expected[4] = 0xffff000f;
 
     uint32_t data5 = 0xffffffff;
-    ClearBits(&data5, 4, 12);
-    uint32_t expected5 = 0xffff000f;
-    if (data5 != expected5) {
-        passed = false;
-        LOG(ERROR) << "Object::TestBitMethods() test 5 failed";
-    }
+    ClearBits(&data5, 17, 7);
+    result[5] = data5;
+    expected[5] = 0xff01ffff;
 
-    uint32_t data6 = 0xffffffff;
-    ClearBits(&data6, 17, 7);
-    uint32_t expected6 = 0xff01ffff;
-    if (data6 != expected6) {
-        passed = false;
-        LOG(ERROR) << "Object::TestBitMethods() test 6 failed";
+    uint32_t data6 = 0xabcdef12;
+    AssignBits(&data6, 0x88888, 4, 12);
+    result[6] = data6;
+    expected[6] = 0xabcd8882;
+
+    uint32_t data7 = 0xffffffff;
+    AssignBits(&data7, 0xe, 16, 8);
+    result[7] = data7;
+    expected[7] = 0xff0effff;
+
+    for (int i = 0; i < NUM_TESTS; i++) {
+        if (result[i] != expected[i]) {
+            passed = false;
+            LOG(ERROR) << "Object::TestBitMethods(): test " << i << " failed";
+        }
     }
 
     return passed;
