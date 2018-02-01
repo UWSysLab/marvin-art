@@ -402,6 +402,9 @@ ADD_TEST_EQ(JIT_CHECK_OSR, static_cast<int32_t>(art::jit::kJitCheckForOSR))
 #define JIT_HOTNESS_DISABLE -2
 ADD_TEST_EQ(JIT_HOTNESS_DISABLE, static_cast<int32_t>(art::jit::kJitHotnessDisabled))
 
+// Test object bit shift methods
+ADD_TEST_EQ(true, art::mirror::Object::TestBitMethods());
+
 #if defined(__cplusplus)
 }  // End of CheckAsmSupportOffsets.
 #endif

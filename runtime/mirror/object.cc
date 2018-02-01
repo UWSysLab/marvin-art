@@ -249,5 +249,59 @@ ArtField* Object::FindFieldByOffset(MemberOffset offset) {
       : ArtField::FindInstanceFieldWithOffset(GetClass(), offset.Uint32Value());
 }
 
+bool Object::TestBitMethods() {
+    bool passed = true;
+
+    uint32_t data1 = 0xabcdef12;
+    uint32_t result1 = GetBits(data1, 4, 12);
+    uint32_t expected1 = 0xef1;
+    if (result1 != expected1) {
+        passed = false;
+        LOG(ERROR) << "Object::TestBitMethods() test 1 failed";
+    }
+
+    uint32_t data2 = 0xffffffff;
+    uint32_t result2 = GetBits(data2, 17, 7);
+    uint32_t expected2 = 0x7f;
+    if (result2 != expected2) {
+        passed = false;
+        LOG(ERROR) << "Object::TestBitMethods() test 2 failed";
+    }
+
+    uint32_t data3 = 0x00000000;
+    SetBits(&data3, 4, 12);
+    uint32_t expected3 = 0x0000fff0;
+    if (data3 != expected3) {
+        passed = false;
+        LOG(ERROR) << "Object::TestBitMethods() test 3 failed";
+    }
+
+    uint32_t data4 = 0x00000000;
+    SetBits(&data4, 17, 7);
+    uint32_t expected4 = 0x00fe0000;
+    if (data4 != expected4) {
+        passed = false;
+        LOG(ERROR) << "Object::TestBitMethods() test 4 failed";
+    }
+
+    uint32_t data5 = 0xffffffff;
+    ClearBits(&data5, 4, 12);
+    uint32_t expected5 = 0xffff000f;
+    if (data5 != expected5) {
+        passed = false;
+        LOG(ERROR) << "Object::TestBitMethods() test 5 failed";
+    }
+
+    uint32_t data6 = 0xffffffff;
+    ClearBits(&data6, 17, 7);
+    uint32_t expected6 = 0xff01ffff;
+    if (data6 != expected6) {
+        passed = false;
+        LOG(ERROR) << "Object::TestBitMethods() test 6 failed";
+    }
+
+    return passed;
+}
+
 }  // namespace mirror
 }  // namespace art

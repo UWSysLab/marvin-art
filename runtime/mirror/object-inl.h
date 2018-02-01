@@ -775,8 +775,8 @@ inline void Object::SetField(MemberOffset field_offset, kSize new_value) {
 
 template<typename kSize, bool kIsVolatile>
 inline kSize Object::GetField(MemberOffset field_offset) {
-  if (!GetAccessBit(1)) {
-      SetAccessBit(0);
+  if (!GetIgnoreReadFlag()) {
+      SetAccessBit();
   }
   const uint8_t* raw_addr = reinterpret_cast<const uint8_t*>(this) + field_offset.Int32Value();
   const kSize* addr = reinterpret_cast<const kSize*>(raw_addr);
@@ -824,8 +824,8 @@ inline bool Object::CasFieldStrongSequentiallyConsistent64(MemberOffset field_of
 template<class T, VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrierOption,
          bool kIsVolatile>
 inline T* Object::GetFieldObject(MemberOffset field_offset) {
-  if (!GetAccessBit(1)) {
-      SetAccessBit(0);
+  if (!GetIgnoreReadFlag()) {
+      SetAccessBit();
   }
   if (kVerifyFlags & kVerifyThis) {
     VerifyObject(this);
@@ -1132,7 +1132,7 @@ template <bool kVisitNativeRoots,
           typename JavaLangRefVisitor>
 inline void Object::VisitReferences(const Visitor& visitor,
                                     const JavaLangRefVisitor& ref_visitor) {
-  SetAccessBit(1);
+  SetIgnoreReadFlag();
   mirror::Class* klass = GetClass<kVerifyFlags, kReadBarrierOption>();
   visitor(this, ClassOffset(), false);
   const uint32_t class_flags = klass->GetClassFlags<kVerifyNone>();
@@ -1186,7 +1186,7 @@ inline void Object::VisitReferences(const Visitor& visitor,
       }
     }
   }
-  ClearAccessBit(1);
+  ClearIgnoreReadFlag();
 }
 }  // namespace mirror
 }  // namespace art

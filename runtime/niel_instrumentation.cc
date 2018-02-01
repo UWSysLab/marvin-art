@@ -185,10 +185,10 @@ void StartAccessCount(gc::collector::GarbageCollector * gc) {
 
 void CountAccess(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_) {
     if (doingAccessCount) {
-        object->SetAccessBit(1);
+        object->SetIgnoreReadFlag();
         size_t objectSize = object->SizeOf();
         mirror::Class * klass = object->GetClass();
-        object->ClearAccessBit(1);
+        object->ClearIgnoreReadFlag();
         uint32_t numPointers = klass->NumReferenceInstanceFields();
         mirror::Class * superClass = klass->GetSuperClass();
         while (superClass != nullptr) {
@@ -209,8 +209,8 @@ void CountAccess(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_) 
             smallObjectTotalObjectSize += objectSize;
         }
 
-        if (object->GetAccessBit(0)) {
-            object->ClearAccessBit(0);
+        if (object->GetAccessBit()) {
+            object->ClearAccessBit();
             objectsAccessed += 1;
             accessedPointerFracHist.Add(pointerSizeFrac);
             accessedObjectSizeHist.Add(objectSize);

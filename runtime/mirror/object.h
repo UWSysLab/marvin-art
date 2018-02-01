@@ -85,14 +85,35 @@ class MANAGED LOCKABLE Object {
     return OFFSET_OF_OBJECT_MEMBER(Object, klass_);
   }
 
-  bool GetAccessBit(uint32_t index) {
-    return (access_bits_ >> index) & 1;
+  static uint32_t GetBits(uint32_t data, uint32_t offset, uint32_t width) {
+    return (data >> offset) & (0xffffffff >> (32 - width));
   }
-  void SetAccessBit(uint32_t index) {
-    access_bits_ = access_bits_ | (1 << index);
+  static void SetBits(uint32_t * data, uint32_t offset, uint32_t width) {
+    *data = *data | ((0xffffffff >> (32 - width)) << offset);
   }
-  void ClearAccessBit(uint32_t index) {
-    access_bits_ = access_bits_ & (~(1 << index));
+  static void ClearBits(uint32_t * data, uint32_t offset, uint32_t width) {
+    *data = *data & ~((0xffffffff >> (32 - width)) << offset);
+  }
+  static bool TestBitMethods();
+
+  bool GetIgnoreReadFlag() {
+    return (bool)GetBits(access_data_, 1, 1);
+  }
+  void SetIgnoreReadFlag() {
+    SetBits(&access_data_, 1, 1);
+  }
+  void ClearIgnoreReadFlag() {
+    ClearBits(&access_data_, 1, 1);
+  }
+
+  bool GetAccessBit() {
+    return (bool)GetBits(access_data_, 0, 1);
+  }
+  void SetAccessBit() {
+    SetBits(&access_data_, 0, 1);
+  }
+  void ClearAccessBit() {
+    ClearBits(&access_data_, 0, 1);
   }
 
   template<VerifyObjectFlags kVerifyFlags = kDefaultVerifyFlags,
@@ -602,7 +623,7 @@ class MANAGED LOCKABLE Object {
   // Monitor and hash code information.
   uint32_t monitor_;
 
-  uint32_t access_bits_;
+  uint32_t access_data_;
   uint32_t padding_;
 
 #ifdef USE_BROOKS_READ_BARRIER
