@@ -1,5 +1,6 @@
 #include "niel_histogram.h"
 
+#include <cmath>
 #include <iomanip>
 #include <sstream>
 
@@ -28,7 +29,7 @@ Histogram::~Histogram() {
 }
 
 void Histogram::Add(double num) {
-    int binIndex = (int)(((num - min_) * numBins_) / (max_ - min_));
+    int binIndex = (int)std::floor(((num - min_) * numBins_) / (max_ - min_));
     if (binIndex < 0) {
         belowMin_++;
     }
