@@ -765,7 +765,7 @@ inline void Object::SetField64Volatile(MemberOffset field_offset, int64_t new_va
 template<typename kSize, bool kIsVolatile>
 inline void Object::SetField(MemberOffset field_offset, kSize new_value) {
   if (!GetIgnoreAccessFlag()) {
-    SetWriteBit();
+    IncrWriteCounter();
   }
   uint8_t* raw_addr = reinterpret_cast<uint8_t*>(this) + field_offset.Int32Value();
   kSize* addr = reinterpret_cast<kSize*>(raw_addr);
@@ -779,7 +779,7 @@ inline void Object::SetField(MemberOffset field_offset, kSize new_value) {
 template<typename kSize, bool kIsVolatile>
 inline kSize Object::GetField(MemberOffset field_offset) {
   if (!GetIgnoreAccessFlag()) {
-      SetReadBit();
+      IncrReadCounter();
   }
   const uint8_t* raw_addr = reinterpret_cast<const uint8_t*>(this) + field_offset.Int32Value();
   const kSize* addr = reinterpret_cast<const kSize*>(raw_addr);
@@ -828,7 +828,7 @@ template<class T, VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrier
          bool kIsVolatile>
 inline T* Object::GetFieldObject(MemberOffset field_offset) {
   if (!GetIgnoreAccessFlag()) {
-      SetReadBit();
+      IncrReadCounter();
   }
   if (kVerifyFlags & kVerifyThis) {
     VerifyObject(this);
@@ -856,7 +856,7 @@ template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVer
 inline void Object::SetFieldObjectWithoutWriteBarrier(MemberOffset field_offset,
                                                       Object* new_value) {
   if (!GetIgnoreAccessFlag()) {
-    SetWriteBit();
+    IncrWriteCounter();
   }
   if (kCheckTransaction) {
     DCHECK_EQ(kTransactionActive, Runtime::Current()->IsActiveTransaction());
@@ -1194,6 +1194,61 @@ inline void Object::VisitReferences(const Visitor& visitor,
   }
   ClearIgnoreAccessFlag();
 }
+
+inline bool Object::GetIgnoreAccessFlag() {
+  return (bool)GetBits(access_data_, 31, 1);
+}
+inline void Object::SetIgnoreAccessFlag() {
+  SetBits(&access_data_, 31, 1);
+}
+inline void Object::ClearIgnoreAccessFlag() {
+  ClearBits(&access_data_, 31, 1);
+}
+
+inline uint32_t Object::GetWriteCounter() {
+  return GetBits(access_data_, 0, 10);
+}
+inline void Object::IncrWriteCounter() {
+  uint32_t oldVal = GetWriteCounter();
+  if (oldVal < 1023) {
+      AssignBits(&access_data_, oldVal + 1, 0, 10);
+  }
+}
+inline void Object::ClearWriteCounter() {
+  ClearBits(&access_data_, 0, 10);
+}
+
+inline uint32_t Object::GetReadCounter() {
+  return GetBits(access_data_, 10, 13);
+}
+inline void Object::IncrReadCounter() {
+  uint32_t oldVal = GetReadCounter();
+  if (oldVal < 8191) {
+      AssignBits(&access_data_, oldVal + 1, 10, 13);
+  }
+}
+inline void Object::ClearReadCounter() {
+  ClearBits(&access_data_, 10, 13);
+}
+
+inline uint32_t Object::GetWriteShiftRegister() {
+  return GetBits(access_data_, 23, 4);
+}
+inline void Object::UpdateWriteShiftRegister(bool written) {
+  uint32_t oldVal = GetWriteShiftRegister();
+  uint32_t newVal = (oldVal >> 1) | ((uint32_t)written << (4 - 1));
+  AssignBits(&access_data_, newVal, 23, 4);
+}
+
+inline uint32_t Object::GetReadShiftRegister() {
+  return GetBits(access_data_, 27, 4);
+}
+inline void Object::UpdateReadShiftRegister(bool read) {
+  uint32_t oldVal = GetReadShiftRegister();
+  uint32_t newVal = (oldVal >> 1) | ((uint32_t)read << (4 - 1));
+  AssignBits(&access_data_, newVal, 27, 4);
+}
+
 }  // namespace mirror
 }  // namespace art
 

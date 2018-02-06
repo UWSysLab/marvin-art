@@ -76,12 +76,12 @@ long smallObjectTotalPointerSize = 0;
 long largeObjectTotalObjectSize = 0;
 long largeObjectTotalPointerSize = 0;
 
-Histogram readPointerFracHist(10, 0, 1);
-Histogram unreadPointerFracHist(10, 0, 1);
-Histogram readObjectSizeHist(10, 0, 400);
-Histogram unreadObjectSizeHist(10, 0, 400);
 Histogram smallObjectPointerFracHist(10, 0, 1); // objects <=200 bytes
 Histogram largeObjectPointerFracHist(10, 0, 1); // objects >200 bytes
+Histogram readCountHist(10, 1, 8191);
+Histogram writeCountHist(10, 1, 8191);
+Histogram readShiftRegHist(16, 0, 16);
+Histogram writeShiftRegHist(16, 0, 16);
 
 void RecordRosAllocAlloc(Thread * self, size_t size, RosAllocAllocType type) {
     instMutex.ExclusiveLock(self);
@@ -179,12 +179,12 @@ void StartAccessCount(gc::collector::GarbageCollector * gc) {
     largeObjectTotalObjectSize = 0;
     largeObjectTotalPointerSize = 0;
 
-    readPointerFracHist.Clear();
-    unreadPointerFracHist.Clear();
-    readObjectSizeHist.Clear();
-    unreadObjectSizeHist.Clear();
     smallObjectPointerFracHist.Clear();
     largeObjectPointerFracHist.Clear();
+    readCountHist.Clear();
+    writeCountHist.Clear();
+    readShiftRegHist.Clear();
+    writeShiftRegHist.Clear();
 }
 
 void CountAccess(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_) {
@@ -213,27 +213,26 @@ void CountAccess(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_) 
             smallObjectTotalObjectSize += objectSize;
         }
 
+        readCountHist.Add(object->GetReadCounter());
+        writeCountHist.Add(object->GetWriteCounter());
+
         bool wasRead = false;
         bool wasWritten = false;
 
-        if (object->GetReadBit()) {
-            object->ClearReadBit();
+        if (object->GetReadCounter() > 0) {
+            object->ClearReadCounter();
             objectsRead += 1;
             wasRead = true;
-            readPointerFracHist.Add(pointerSizeFrac);
-            readObjectSizeHist.Add(objectSize);
             readTotalPointerSize += sizeOfPointers;
             readTotalObjectSize += objectSize;
         }
         else {
-            unreadPointerFracHist.Add(pointerSizeFrac);
-            unreadObjectSizeHist.Add(objectSize);
             unreadTotalPointerSize += sizeOfPointers;
             unreadTotalObjectSize += objectSize;
         }
 
-        if (object->GetWriteBit()) {
-            object->ClearWriteBit();
+        if (object->GetWriteCounter() > 0) {
+            object->ClearWriteCounter();
             objectsWritten += 1;
             wasWritten = true;
         }
@@ -241,6 +240,11 @@ void CountAccess(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_) 
         if (wasRead && wasWritten) {
             objectsReadAndWritten += 1;
         }
+
+        object->UpdateReadShiftRegister(wasRead);
+        object->UpdateWriteShiftRegister(wasWritten);
+        readShiftRegHist.Add(object->GetReadShiftRegister());
+        writeShiftRegHist.Add(object->GetWriteShiftRegister());
 
         totalObjects += 1;
     }
@@ -272,18 +276,14 @@ void FinishAccessCount(gc::collector::GarbageCollector * gc) {
                   << (double)largeObjectTotalPointerSize / largeObjectTotalObjectSize
                   << " pointer size: " << largeObjectTotalPointerSize
                   << " object size: " << largeObjectTotalObjectSize;
-        LOG(INFO) << "NIEL pointer frac hist of read objects (scaled):\n"
-                  << readPointerFracHist.Print(true, true);
-        LOG(INFO) << "NIEL pointer frac hist of unread objects (scaled):\n"
-                  << unreadPointerFracHist.Print(true, true);
-        LOG(INFO) << "NIEL object size hist of read objects(scaled):\n"
-                  << readObjectSizeHist.Print(true, true);
-        LOG(INFO) << "NIEL object size hist of unread objects(scaled):\n"
-                  << unreadObjectSizeHist.Print(true, true);
         LOG(INFO) << "NIEL pointer frac hist of small objects (scaled):\n"
                   << smallObjectPointerFracHist.Print(true, true);
         LOG(INFO) << "NIEL pointer frac hist of large objects (scaled):\n"
                   << largeObjectPointerFracHist.Print(true, true);
+        LOG(INFO) << "NIEL read count hist:\n" << readCountHist.Print(false, true);
+        LOG(INFO) << "NIEL write count hist:\n" << writeCountHist.Print(false, true);
+        LOG(INFO) << "NIEL read shift register hist:\n" << readShiftRegHist.Print(false, true);
+        LOG(INFO) << "NIEL write shift register hist:\n" << writeShiftRegHist.Print(false, true);
     }
 }
 

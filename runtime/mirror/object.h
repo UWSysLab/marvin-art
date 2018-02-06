@@ -100,35 +100,34 @@ class MANAGED LOCKABLE Object {
   }
   static bool TestBitMethods();
 
-  bool GetIgnoreAccessFlag() {
-    return (bool)GetBits(access_data_, 2, 1);
-  }
-  void SetIgnoreAccessFlag() {
-    SetBits(&access_data_, 2, 1);
-  }
-  void ClearIgnoreAccessFlag() {
-    ClearBits(&access_data_, 2, 1);
-  }
+  /*
+   * Current layout of access_data_:
+   * 3|3222|2222|2221111111111|0000000000
+   * 1|0987|6543|2109876543210|9876543210
+   * f|rsr |wsr |read counter |write counter
+   *
+   * f: ignore access flag
+   * rsr: read shift register (for Clock working set estimation)
+   * wsr: write shift register (for Clock)
+   */
 
-  bool GetWriteBit() {
-    return (bool)GetBits(access_data_, 1, 1);
-  }
-  void SetWriteBit() {
-    SetBits(&access_data_, 1, 1);
-  }
-  void ClearWriteBit() {
-    ClearBits(&access_data_, 1, 1);
-  }
+  bool GetIgnoreAccessFlag();
+  void SetIgnoreAccessFlag();
+  void ClearIgnoreAccessFlag();
 
-  bool GetReadBit() {
-    return (bool)GetBits(access_data_, 0, 1);
-  }
-  void SetReadBit() {
-    SetBits(&access_data_, 0, 1);
-  }
-  void ClearReadBit() {
-    ClearBits(&access_data_, 0, 1);
-  }
+  uint32_t GetWriteCounter();
+  void IncrWriteCounter();
+  void ClearWriteCounter();
+
+  uint32_t GetReadCounter();
+  void IncrReadCounter();
+  void ClearReadCounter();
+
+  uint32_t GetWriteShiftRegister();
+  void UpdateWriteShiftRegister(bool written);
+
+  uint32_t GetReadShiftRegister();
+  void UpdateReadShiftRegister(bool read);
 
   template<VerifyObjectFlags kVerifyFlags = kDefaultVerifyFlags,
            ReadBarrierOption kReadBarrierOption = kWithReadBarrier>
@@ -637,6 +636,7 @@ class MANAGED LOCKABLE Object {
   // Monitor and hash code information.
   uint32_t monitor_;
 
+  // See higher up in this file for info about the layout of this word.
   uint32_t access_data_;
   uint32_t padding_;
 
