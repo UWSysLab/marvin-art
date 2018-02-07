@@ -70,57 +70,83 @@ long BivariateHistogram::TotalCount() {
     return count;
 }
 
+std::string BivariateHistogram::GetBinLabel(int binNum, int numBins, double min, double max) {
+    std::stringstream result;
+
+    double binWidth = (max - min) / numBins;
+    double binStart = min + binNum * binWidth;
+    double binEnd = min + (binNum + 1) * binWidth;
+
+    result << BIN_FMT << "[";
+    if (binStart < min) {
+        result << "-inf";
+    }
+    else {
+        result << binStart;
+    }
+    result << ",";
+    if (binEnd > max) {
+        result << "inf";
+    }
+    else {
+        result << binEnd;
+    }
+    result << "):";
+
+    return result.str();
+}
+
+int BivariateHistogram::CalcMaxXBinLabelLength() {
+    int max = 0;
+    for (int i = -1; i < numBinsX_ + 1; i++) {
+        int length = GetBinLabel(i, numBinsX_, minX_, maxX_).length();
+        if (length > max) {
+            max = length;
+        }
+    }
+    return max;
+}
+
+int BivariateHistogram::CalcMaxYBinLabelLength() {
+    int max = 0;
+    for (int i = -1; i < numBinsY_ + 1; i++) {
+        int length = GetBinLabel(i, numBinsY_, minY_, maxY_).length();
+        if (length > max) {
+            max = length;
+        }
+    }
+    return max;
+}
+
+std::string BivariateHistogram::StringOfSpaces(int numSpaces) {
+    std::stringstream result;
+    for (int i = 0; i < numSpaces; i++) {
+        result << " ";
+    }
+    return result.str();
+}
+
 std::string BivariateHistogram::Print(bool scaled) {
     long count = BivariateHistogram::TotalCount();
-    double binWidthX = (maxX_ - minX_) / numBinsX_;
-    double binWidthY = (maxY_ - minY_) / numBinsY_;
-
+    int maxXBinLabelLength = CalcMaxXBinLabelLength();
     std::stringstream output;
 
-    // print Y variable bin labels
-    output << BIN_FMT << "X\\Y: ";
+    std::string axisLabel("X\\Y:");
+    output << axisLabel;
+    output << StringOfSpaces(maxXBinLabelLength - axisLabel.length() + 1);
+
     for (int k = 0; k < numBinsY_ + 2; k++) {
         int binNumY = k - 1;
-        double binStartY = minY_ + binNumY * binWidthY;
-        double binEndY = minY_ + (binNumY + 1) * binWidthY;
-        output << "[";
-        if (binStartY < minY_) {
-            output << "-inf";
-        }
-        else {
-            output << binStartY;
-        }
-        output << ",";
-        if (binEndY > maxY_) {
-            output << "inf";
-        }
-        else {
-            output << binEndY;
-        }
-        output << "): ";
+        output << GetBinLabel(binNumY, numBinsY_, minY_, maxY_) << " ";
     }
     output << std::endl;
 
     for (int i = 0; i < numBinsX_ + 2; i++) {
-        // print X variable bin label
         int binNumX = i - 1;
-        double binStartX = minX_ + binNumX * binWidthX;
-        double binEndX = minX_ + (binNumX + 1) * binWidthX;
-        output << BIN_FMT << "[";
-        if (binStartX < minX_) {
-            output << "-inf";
-        }
-        else {
-            output << binStartX;
-        }
-        output << ",";
-        if (binEndX > maxX_) {
-            output << "inf";
-        }
-        else {
-            output << binEndX;
-        }
-        output << "): ";
+        std::string label = GetBinLabel(binNumX, numBinsX_, minX_, maxX_);
+        output << label;
+        int labelLength = label.length();
+        output << StringOfSpaces(maxXBinLabelLength - label.length() + 1);
 
         for (int j = 0; j < numBinsY_ + 2; j++) {
             if (scaled) {
@@ -140,7 +166,9 @@ std::string BivariateHistogram::Print(bool scaled) {
                 output << "\t";
             }
         }
-        output << std::endl;
+        if (i < numBinsX_ + 1) {
+            output << std::endl;
+        }
     }
     return output.str();
 }

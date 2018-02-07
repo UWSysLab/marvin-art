@@ -19,6 +19,11 @@ class BivariateHistogram {
     std::string Print(bool scaled);
     long TotalCount();
   private:
+    std::string GetBinLabel(int binNum, int numBins, double min, double max);
+    std::string StringOfSpaces(int numSpaces);
+    int CalcMaxXBinLabelLength();
+    int CalcMaxYBinLabelLength();
+
     /*
      * Has dimensions (numBinsX_ + 2) x (numBinsY_ + 2).
      *
