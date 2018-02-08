@@ -17,6 +17,7 @@
 #include <ctime>
 #include <map>
 
+#include "niel_bivariate_histogram.h"
 #include "niel_histogram.h"
 
 namespace art {
@@ -79,9 +80,15 @@ long largeObjectTotalPointerSize = 0;
 Histogram smallObjectPointerFracHist(10, 0, 1); // objects <=200 bytes
 Histogram largeObjectPointerFracHist(10, 0, 1); // objects >200 bytes
 Histogram readCountHist(10, 1, 8191);
-Histogram writeCountHist(10, 1, 8191);
+Histogram writeCountHist(10, 1, 1023);
 Histogram readShiftRegHist(16, 0, 16);
 Histogram writeShiftRegHist(16, 0, 16);
+
+BivariateHistogram readsVsPointerFracHist(10, 1, 2400, 10, 0, 1);
+BivariateHistogram writesVsPointerFracHist(10, 1, 100, 10, 0, 1);
+BivariateHistogram readShiftRegVsPointerFracHist(16, 0, 16, 10, 0, 1);
+BivariateHistogram writeShiftRegVsPointerFracHist(16, 0, 16, 10, 0, 1);
+BivariateHistogram objectSizeVsPointerFracHist(10, 0, 1000, 10, 0, 1);
 
 void RecordRosAllocAlloc(Thread * self, size_t size, RosAllocAllocType type) {
     instMutex.ExclusiveLock(self);
@@ -185,6 +192,12 @@ void StartAccessCount(gc::collector::GarbageCollector * gc) {
     writeCountHist.Clear();
     readShiftRegHist.Clear();
     writeShiftRegHist.Clear();
+
+    readsVsPointerFracHist.Clear();
+    writesVsPointerFracHist.Clear();
+    readShiftRegVsPointerFracHist.Clear();
+    writeShiftRegVsPointerFracHist.Clear();
+    objectSizeVsPointerFracHist.Clear();
 }
 
 void CountAccess(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_) {
@@ -213,13 +226,13 @@ void CountAccess(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_) 
             smallObjectTotalObjectSize += objectSize;
         }
 
-        readCountHist.Add(object->GetReadCounter());
-        writeCountHist.Add(object->GetWriteCounter());
+        uint32_t readCounterVal = object->GetReadCounter();
+        uint32_t writeCounterVal = object->GetWriteCounter();
 
         bool wasRead = false;
         bool wasWritten = false;
 
-        if (object->GetReadCounter() > 0) {
+        if (readCounterVal > 0) {
             object->ClearReadCounter();
             objectsRead += 1;
             wasRead = true;
@@ -231,7 +244,7 @@ void CountAccess(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_) 
             unreadTotalObjectSize += objectSize;
         }
 
-        if (object->GetWriteCounter() > 0) {
+        if (writeCounterVal > 0) {
             object->ClearWriteCounter();
             objectsWritten += 1;
             wasWritten = true;
@@ -243,8 +256,20 @@ void CountAccess(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_) 
 
         object->UpdateReadShiftRegister(wasRead);
         object->UpdateWriteShiftRegister(wasWritten);
-        readShiftRegHist.Add(object->GetReadShiftRegister());
-        writeShiftRegHist.Add(object->GetWriteShiftRegister());
+
+        uint32_t rsrVal = object->GetReadShiftRegister();
+        uint32_t wsrVal = object->GetWriteShiftRegister();
+
+        readCountHist.Add(readCounterVal);
+        writeCountHist.Add(writeCounterVal);
+        readShiftRegHist.Add(rsrVal);
+        writeShiftRegHist.Add(wsrVal);
+
+        readsVsPointerFracHist.Add(readCounterVal, pointerSizeFrac);
+        writesVsPointerFracHist.Add(readCounterVal, pointerSizeFrac);
+        readShiftRegVsPointerFracHist.Add(rsrVal, pointerSizeFrac);
+        writeShiftRegVsPointerFracHist.Add(wsrVal, pointerSizeFrac);
+        objectSizeVsPointerFracHist.Add(objectSize, pointerSizeFrac);
 
         totalObjects += 1;
     }
@@ -284,6 +309,16 @@ void FinishAccessCount(gc::collector::GarbageCollector * gc) {
         LOG(INFO) << "NIEL write count hist:\n" << writeCountHist.Print(false, true);
         LOG(INFO) << "NIEL read shift register hist:\n" << readShiftRegHist.Print(false, true);
         LOG(INFO) << "NIEL write shift register hist:\n" << writeShiftRegHist.Print(false, true);
+        LOG(INFO) << "NIEL read count vs pointer frac hist:\n"
+                  << readsVsPointerFracHist.Print(false);
+        LOG(INFO) << "NIEL write count vs pointer frac hist:\n"
+                  << writesVsPointerFracHist.Print(false);
+        LOG(INFO) << "NIEL read shift reg vs pointer frac hist:\n"
+                  << readShiftRegVsPointerFracHist.Print(false);
+        LOG(INFO) << "NIEL write shift reg vs pointer frac hist:\n"
+                  << writeShiftRegVsPointerFracHist.Print(false);
+        LOG(INFO) << "NIEL object size vs pointer frac hist:\n"
+                  << objectSizeVsPointerFracHist.Print(false);
     }
 }
 

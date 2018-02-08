@@ -145,7 +145,6 @@ std::string BivariateHistogram::Print(bool scaled) {
         int binNumX = i - 1;
         std::string label = GetBinLabel(binNumX, numBinsX_, minX_, maxX_);
         output << label;
-        int labelLength = label.length();
         output << StringOfSpaces(maxXBinLabelLength - label.length() + 1);
 
         for (int j = 0; j < numBinsY_ + 2; j++) {
