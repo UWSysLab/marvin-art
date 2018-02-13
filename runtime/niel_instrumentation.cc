@@ -35,6 +35,7 @@ void maybePrintLog();
 void printAllocCounts();
 void printHeap();
 std::string getPackageName();
+void openSwapFileIfNotOpen();
 
 /* Variables */
 Mutex instMutex("NielInstrumentationMutex", kLoggingLock);
@@ -93,6 +94,8 @@ BivariateHistogram writesVsPointerFracHist(10, 1, 100, 10, 0, 1);
 BivariateHistogram readShiftRegVsPointerFracHist(16, 0, 16, 10, 0, 1);
 BivariateHistogram writeShiftRegVsPointerFracHist(16, 0, 16, 10, 0, 1);
 BivariateHistogram objectSizeVsPointerFracHist(10, 0, 1000, 10, 0, 1);
+
+std::fstream swapfile;
 
 void RecordRosAllocAlloc(Thread * self, size_t size, RosAllocAllocType type) {
     instMutex.ExclusiveLock(self);
@@ -202,6 +205,8 @@ void StartAccessCount(gc::collector::GarbageCollector * gc) {
     readShiftRegVsPointerFracHist.Clear();
     writeShiftRegVsPointerFracHist.Clear();
     objectSizeVsPointerFracHist.Clear();
+
+    openSwapFileIfNotOpen();
 }
 
 void CountAccess(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_) {
@@ -324,6 +329,14 @@ void FinishAccessCount(gc::collector::GarbageCollector * gc) {
         LOG(INFO) << "NIEL object size vs pointer frac hist:\n"
                   << objectSizeVsPointerFracHist.Print(false);
         LOG(INFO) << "NIEL package name: " << getPackageName();
+
+        char data[4];
+        data[0] = 0;
+        data[1] = 1;
+        data[2] = 2;
+        data[3] = 255;
+        swapfile.write(data, 4);
+        swapfile.flush();
     }
 }
 
@@ -333,6 +346,23 @@ std::string getPackageName() {
     getline(cmdlineFile, cmdline);
     cmdlineFile.close();
     return cmdline.substr(0, cmdline.find((char)0));
+}
+
+void openSwapFileIfNotOpen() {
+    if (!swapfile.is_open()) {
+        std::string filename("/data/data/" + getPackageName() + "/swapfile");
+        swapfile.open(filename, std::ios::binary | std::ios::in | std::ios::out);
+        if (!swapfile) {
+            LOG(INFO) << "NIEL opening swapfile in write-only mode to create file";
+            swapfile.close();
+            swapfile.open(filename, std::ios::binary | std::ios::out);
+            swapfile.close();
+            swapfile.open(filename, std::ios::binary | std::ios::in | std::ios::out);
+            if (!swapfile) {
+                LOG(INFO) << "NIEL error creating swapfile";
+            }
+        }
+    }
 }
 
 void maybePrintLog() {
