@@ -15,7 +15,10 @@
 
 #include <cstring>
 #include <ctime>
+#include <fstream>
 #include <map>
+#include <unistd.h>
+#include <sys/types.h>
 
 #include "niel_bivariate_histogram.h"
 #include "niel_histogram.h"
@@ -31,11 +34,13 @@ const int LOG_INTERVAL_SECONDS = 10;
 void maybePrintLog();
 void printAllocCounts();
 void printHeap();
+std::string getPackageName();
 
 /* Variables */
 Mutex instMutex("NielInstrumentationMutex", kLoggingLock);
 gc::Heap * heap = NULL;
 time_t lastLogTime;
+std::string packageName;
 
 /*     Locked with instMutex */
 long numTotalRosAllocThreadLocalAllocs = 0;
@@ -319,7 +324,19 @@ void FinishAccessCount(gc::collector::GarbageCollector * gc) {
                   << writeShiftRegVsPointerFracHist.Print(false);
         LOG(INFO) << "NIEL object size vs pointer frac hist:\n"
                   << objectSizeVsPointerFracHist.Print(false);
+        LOG(INFO) << "NIEL package name: " << getPackageName();
     }
+}
+
+std::string getPackageName() {
+    if (packageName.length() == 0) {
+        std::ifstream cmdlineFile("/proc/self/cmdline");
+        std::string cmdline;
+        getline(cmdlineFile, cmdline);
+        cmdlineFile.close();
+        packageName = cmdline.substr(0, cmdline.find((char)0));
+    }
+    return packageName;
 }
 
 void maybePrintLog() {
