@@ -40,7 +40,6 @@ std::string getPackageName();
 Mutex instMutex("NielInstrumentationMutex", kLoggingLock);
 gc::Heap * heap = NULL;
 time_t lastLogTime;
-std::string packageName;
 
 /*     Locked with instMutex */
 long numTotalRosAllocThreadLocalAllocs = 0;
@@ -329,14 +328,11 @@ void FinishAccessCount(gc::collector::GarbageCollector * gc) {
 }
 
 std::string getPackageName() {
-    if (packageName.length() == 0) {
-        std::ifstream cmdlineFile("/proc/self/cmdline");
-        std::string cmdline;
-        getline(cmdlineFile, cmdline);
-        cmdlineFile.close();
-        packageName = cmdline.substr(0, cmdline.find((char)0));
-    }
-    return packageName;
+    std::ifstream cmdlineFile("/proc/self/cmdline");
+    std::string cmdline;
+    getline(cmdlineFile, cmdline);
+    cmdlineFile.close();
+    return cmdline.substr(0, cmdline.find((char)0));
 }
 
 void maybePrintLog() {
