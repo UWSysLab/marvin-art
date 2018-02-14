@@ -36,6 +36,7 @@ void printAllocCounts();
 void printHeap();
 std::string getPackageName();
 void openSwapFileIfNotOpen();
+void checkSwapFileError(std::string msg);
 
 /* Variables */
 Mutex instMutex("NielInstrumentationMutex", kLoggingLock);
@@ -96,6 +97,7 @@ BivariateHistogram writeShiftRegVsPointerFracHist(16, 0, 16, 10, 0, 1);
 BivariateHistogram objectSizeVsPointerFracHist(10, 0, 1000, 10, 0, 1);
 
 std::fstream swapfile;
+uint32_t swapfilePid;
 
 void RecordRosAllocAlloc(Thread * self, size_t size, RosAllocAllocType type) {
     instMutex.ExclusiveLock(self);
@@ -329,14 +331,6 @@ void FinishAccessCount(gc::collector::GarbageCollector * gc) {
         LOG(INFO) << "NIEL object size vs pointer frac hist:\n"
                   << objectSizeVsPointerFracHist.Print(false);
         LOG(INFO) << "NIEL package name: " << getPackageName();
-
-        char data[4];
-        data[0] = 0;
-        data[1] = 1;
-        data[2] = 2;
-        data[3] = 255;
-        swapfile.write(data, 4);
-        swapfile.flush();
     }
 }
 
@@ -349,6 +343,10 @@ std::string getPackageName() {
 }
 
 void openSwapFileIfNotOpen() {
+    uint32_t pid = getpid();
+    if (swapfile.is_open() && swapfilePid != pid) {
+        swapfile.close();
+    }
     if (!swapfile.is_open()) {
         std::string filename("/data/data/" + getPackageName() + "/swapfile");
         swapfile.open(filename, std::ios::binary | std::ios::in | std::ios::out);
@@ -362,6 +360,20 @@ void openSwapFileIfNotOpen() {
                 LOG(INFO) << "NIEL error creating swapfile";
             }
         }
+        swapfilePid = pid;
+        LOG(INFO) << "NIEL opened swapfile with PID " << swapfilePid;
+        checkSwapFileError("before PID write");
+        swapfile.write((char *)&pid, 4);
+        checkSwapFileError("after PID write");
+        swapfile.flush();
+        checkSwapFileError("after PID flush");
+    }
+}
+
+void checkSwapFileError(std::string msg) {
+    if (!swapfile) {
+        LOG(INFO) << "NIEL swapfile error detected: " << msg << " (" << swapfile.good() << " "
+                  << swapfile.eof() << " " << swapfile.fail() << " " << swapfile.bad() << ")";
     }
 }
 
