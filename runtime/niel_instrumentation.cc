@@ -34,9 +34,10 @@ const int LOG_INTERVAL_SECONDS = 10;
 void maybePrintLog();
 void printAllocCounts();
 void printHeap();
+
 std::string getPackageName();
-void openSwapFileIfNotOpen();
-void checkSwapFileError(std::string msg);
+void openFile(const std::string & path, std::fstream & stream);
+bool checkStreamError(const std::ios & stream, const std::string & msg);
 
 /* Variables */
 Mutex instMutex("NielInstrumentationMutex", kLoggingLock);
@@ -97,7 +98,7 @@ BivariateHistogram writeShiftRegVsPointerFracHist(16, 0, 16, 10, 0, 1);
 BivariateHistogram objectSizeVsPointerFracHist(10, 0, 1000, 10, 0, 1);
 
 std::fstream swapfile;
-uint32_t swapfilePid;
+uint32_t pid = 0;
 
 void RecordRosAllocAlloc(Thread * self, size_t size, RosAllocAllocType type) {
     instMutex.ExclusiveLock(self);
@@ -208,7 +209,19 @@ void StartAccessCount(gc::collector::GarbageCollector * gc) {
     writeShiftRegVsPointerFracHist.Clear();
     objectSizeVsPointerFracHist.Clear();
 
-    openSwapFileIfNotOpen();
+    std::string swapfilePath("/data/data/" + getPackageName() + "/swapfile");
+    uint32_t curPid = getpid();
+    if (curPid != pid) {
+        pid = curPid;
+        openFile(swapfilePath, swapfile);
+
+        swapfile.write((char *)&pid, 4);
+        swapfile.flush();
+        checkStreamError(swapfile, "after opening swapfile");
+    }
+    swapfile.write("GC", 2);
+    swapfile.flush();
+    checkStreamError(swapfile, "after write");
 }
 
 void CountAccess(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_) {
@@ -342,39 +355,23 @@ std::string getPackageName() {
     return cmdline.substr(0, cmdline.find((char)0));
 }
 
-void openSwapFileIfNotOpen() {
-    uint32_t pid = getpid();
-    if (swapfile.is_open() && swapfilePid != pid) {
-        swapfile.close();
-    }
-    if (!swapfile.is_open()) {
-        std::string filename("/data/data/" + getPackageName() + "/swapfile");
-        swapfile.open(filename, std::ios::binary | std::ios::in | std::ios::out);
-        if (!swapfile) {
-            LOG(INFO) << "NIEL opening swapfile in write-only mode to create file";
-            swapfile.close();
-            swapfile.open(filename, std::ios::binary | std::ios::out);
-            swapfile.close();
-            swapfile.open(filename, std::ios::binary | std::ios::in | std::ios::out);
-            if (!swapfile) {
-                LOG(INFO) << "NIEL error creating swapfile";
-            }
-        }
-        swapfilePid = pid;
-        LOG(INFO) << "NIEL opened swapfile with PID " << swapfilePid;
-        checkSwapFileError("before PID write");
-        swapfile.write((char *)&pid, 4);
-        checkSwapFileError("after PID write");
-        swapfile.flush();
-        checkSwapFileError("after PID flush");
+void openFile(const std::string & path, std::fstream & stream) {
+    stream.open(path, std::ios::binary | std::ios::in | std::ios::out | std::ios::trunc);
+    if (!stream) {
+        stream.close();
+        stream.open(path, std::ios::binary | std::ios::out);
+        stream.close();
+        stream.open(path, std::ios::binary | std::ios::in | std::ios::out | std::ios::trunc);
     }
 }
 
-void checkSwapFileError(std::string msg) {
-    if (!swapfile) {
-        LOG(INFO) << "NIEL swapfile error detected: " << msg << " (" << swapfile.good() << " "
-                  << swapfile.eof() << " " << swapfile.fail() << " " << swapfile.bad() << ")";
+bool checkStreamError(const std::ios & stream, const std::string & msg) {
+    bool error = !stream;
+    if (error) {
+        LOG(ERROR) << "NIEL stream error: " << msg << " (" << stream.good() << " "
+                   << stream.eof() << " " << stream.fail() << " " << stream.bad() << ")";
     }
+    return error;
 }
 
 void maybePrintLog() {
