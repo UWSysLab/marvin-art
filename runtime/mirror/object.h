@@ -101,7 +101,7 @@ class MANAGED LOCKABLE Object {
   static bool TestBitMethods();
 
   /*
-   * Current layout of access_data_:
+   * Current layout of x_access_data_:
    * 3|3222|2222|2221111111111|0000000000
    * 1|0987|6543|2109876543210|9876543210
    * f|rsr |wsr |read counter |write counter
@@ -636,9 +636,10 @@ class MANAGED LOCKABLE Object {
   // Monitor and hash code information.
   uint32_t monitor_;
 
-  // See higher up in this file for info about the layout of this word.
-  uint32_t access_data_;
-  uint32_t padding_;
+  // Names use 'x' prefix for the same reason that the Brooks variables defined
+  // below do.
+  uint32_t x_access_data_; // See higher up in this file for info about layout.
+  uint32_t x_padding_;
 
 #ifdef USE_BROOKS_READ_BARRIER
   // Note names use a 'x' prefix and the x_rb_ptr_ is of type int

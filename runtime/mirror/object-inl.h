@@ -1196,57 +1196,57 @@ inline void Object::VisitReferences(const Visitor& visitor,
 }
 
 inline bool Object::GetIgnoreAccessFlag() {
-  return (bool)GetBits(access_data_, 31, 1);
+  return (bool)GetBits(x_access_data_, 31, 1);
 }
 inline void Object::SetIgnoreAccessFlag() {
-  SetBits(&access_data_, 31, 1);
+  SetBits(&x_access_data_, 31, 1);
 }
 inline void Object::ClearIgnoreAccessFlag() {
-  ClearBits(&access_data_, 31, 1);
+  ClearBits(&x_access_data_, 31, 1);
 }
 
 inline uint32_t Object::GetWriteCounter() {
-  return GetBits(access_data_, 0, 10);
+  return GetBits(x_access_data_, 0, 10);
 }
 inline void Object::IncrWriteCounter() {
   uint32_t oldVal = GetWriteCounter();
   if (oldVal < 1023) {
-      AssignBits(&access_data_, oldVal + 1, 0, 10);
+      AssignBits(&x_access_data_, oldVal + 1, 0, 10);
   }
 }
 inline void Object::ClearWriteCounter() {
-  ClearBits(&access_data_, 0, 10);
+  ClearBits(&x_access_data_, 0, 10);
 }
 
 inline uint32_t Object::GetReadCounter() {
-  return GetBits(access_data_, 10, 13);
+  return GetBits(x_access_data_, 10, 13);
 }
 inline void Object::IncrReadCounter() {
   uint32_t oldVal = GetReadCounter();
   if (oldVal < 8191) {
-      AssignBits(&access_data_, oldVal + 1, 10, 13);
+      AssignBits(&x_access_data_, oldVal + 1, 10, 13);
   }
 }
 inline void Object::ClearReadCounter() {
-  ClearBits(&access_data_, 10, 13);
+  ClearBits(&x_access_data_, 10, 13);
 }
 
 inline uint32_t Object::GetWriteShiftRegister() {
-  return GetBits(access_data_, 23, 4);
+  return GetBits(x_access_data_, 23, 4);
 }
 inline void Object::UpdateWriteShiftRegister(bool written) {
   uint32_t oldVal = GetWriteShiftRegister();
   uint32_t newVal = (oldVal >> 1) | ((uint32_t)written << (4 - 1));
-  AssignBits(&access_data_, newVal, 23, 4);
+  AssignBits(&x_access_data_, newVal, 23, 4);
 }
 
 inline uint32_t Object::GetReadShiftRegister() {
-  return GetBits(access_data_, 27, 4);
+  return GetBits(x_access_data_, 27, 4);
 }
 inline void Object::UpdateReadShiftRegister(bool read) {
   uint32_t oldVal = GetReadShiftRegister();
   uint32_t newVal = (oldVal >> 1) | ((uint32_t)read << (4 - 1));
-  AssignBits(&access_data_, newVal, 27, 4);
+  AssignBits(&x_access_data_, newVal, 27, 4);
 }
 
 }  // namespace mirror
