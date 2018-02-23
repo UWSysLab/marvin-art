@@ -1,6 +1,5 @@
 #include "niel_instrumentation.h"
 
-#include "base/mutex.h"
 #include "gc/allocator/rosalloc.h"
 #include "gc/collector/garbage_collector.h"
 #include "gc/heap.h"
@@ -224,7 +223,7 @@ void StartAccessCount(gc::collector::GarbageCollector * gc) {
     checkStreamError(swapfile, "after write");
 }
 
-void CountAccess(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_) {
+void CountAccess(gc::collector::GarbageCollector * gc ATTRIBUTE_UNUSED, mirror::Object * object) {
     if (doingAccessCount) {
         object->SetIgnoreAccessFlag();
         size_t objectSize = object->SizeOf();

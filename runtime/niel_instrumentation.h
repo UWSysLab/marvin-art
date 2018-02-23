@@ -1,6 +1,7 @@
 #ifndef ART_RUNTIME_NIEL_INSTRUMENTATION_H_
 #define ART_RUNTIME_NIEL_INSTRUMENTATION_H_
 
+#include "base/mutex.h"
 #include "globals.h"
 
 namespace art {
@@ -38,7 +39,8 @@ void RecordFree(Thread * self, gc::space::Space * space, size_t size, int count)
 void SetHeap(gc::Heap * inHeap);
 
 void StartAccessCount(gc::collector::GarbageCollector * gc);
-void CountAccess(mirror::Object * object);
+void CountAccess(gc::collector::GarbageCollector * gc, mirror::Object * object)
+    SHARED_REQUIRES(Locks::mutator_lock_);
 void FinishAccessCount(gc::collector::GarbageCollector * gc);
 
 } // namespace nielinst

@@ -1428,7 +1428,7 @@ void MarkSweep::ProcessMarkStack(bool paused) {
       }
       DCHECK(obj != nullptr);
       ScanObject(obj);
-      nielinst::CountAccess(obj);
+      nielinst::CountAccess(this, obj);
     }
   }
 }
