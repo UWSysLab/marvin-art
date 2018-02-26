@@ -28,19 +28,23 @@ Histogram::~Histogram() {
     delete bins_;
 }
 
+
 void Histogram::Add(double num) {
+    AddMultiple(num, 1);
+}
+void Histogram::AddMultiple(double num, long count) {
     int binIndex = (int)std::floor(((num - min_) * numBins_) / (max_ - min_));
     if (binIndex < 0) {
-        belowMin_++;
+        belowMin_ += count;
     }
     else if (binIndex >= numBins_) {
-        aboveMax_++;
+        aboveMax_ += count;
     }
     else {
-        bins_[binIndex]++;
+        bins_[binIndex] += count;
     }
 
-    sum_ += num;
+    sum_ += (num * count);
 }
 
 void Histogram::Clear() {
@@ -57,6 +61,8 @@ long Histogram::Count() {
     for (int i = 0; i < numBins_; i++) {
         count += bins_[i];
     }
+    count += belowMin_;
+    count += aboveMax_;
     return count;
 }
 

@@ -12,6 +12,7 @@ class Histogram {
     Histogram(int numBins, double min, double max);
     ~Histogram();
     void Add(double num);
+    void AddMultiple(double num, long count);
     long Count();
     void Clear();
     double GetAverage();
