@@ -466,6 +466,7 @@ size_t FreeListSpace::Free(Thread* self, mirror::Object* obj) {
     // Can't disallow reads since we use them to find next chunks during coalescing.
     mprotect(obj, allocation_size, PROT_READ);
   }
+  nielinst::RecordFree(self, this, allocation_size, 1);
   return allocation_size;
 }
 
@@ -534,6 +535,7 @@ mirror::Object* FreeListSpace::Alloc(Thread* self, size_t num_bytes, size_t* byt
   }
   new_info->SetPrevFreeBytes(0);
   new_info->SetByteSize(allocation_size, false);
+  nielinst::RecordAlloc(self, this, allocation_size);
   return obj;
 }
 
