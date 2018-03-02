@@ -239,6 +239,9 @@ size_t RosAllocSpace::FreeList(Thread* self, size_t num_ptrs, mirror::Object** p
     CHECK_EQ(verify_bytes, bytes_freed);
   }
   nielinst::RecordFree(self, this, bytes_freed, num_ptrs);
+  for (size_t i = 0; i < num_ptrs; i++) {
+    nielinst::GcRecordFree(self, ptrs[i]);
+  }
   return bytes_freed;
 }
 

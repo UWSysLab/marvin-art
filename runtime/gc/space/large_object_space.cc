@@ -207,6 +207,7 @@ size_t LargeObjectMapSpace::Free(Thread* self, mirror::Object* ptr) {
   delete mem_map;
   large_objects_.erase(it);
   nielinst::RecordFree(self, this, allocation_size, 1);
+  nielinst::GcRecordFree(self, ptr);
   return allocation_size;
 }
 
@@ -467,6 +468,7 @@ size_t FreeListSpace::Free(Thread* self, mirror::Object* obj) {
     mprotect(obj, allocation_size, PROT_READ);
   }
   nielinst::RecordFree(self, this, allocation_size, 1);
+  nielinst::GcRecordFree(self, obj);
   return allocation_size;
 }
 

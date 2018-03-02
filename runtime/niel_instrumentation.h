@@ -43,6 +43,8 @@ void CountAccess(gc::collector::GarbageCollector * gc, mirror::Object * object)
     SHARED_REQUIRES(Locks::mutator_lock_);
 void FinishAccessCount(gc::collector::GarbageCollector * gc);
 
+void GcRecordFree(Thread * self, mirror::Object * object);
+
 } // namespace nielinst
 } // namespace art
 

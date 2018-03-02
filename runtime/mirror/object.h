@@ -129,6 +129,13 @@ class MANAGED LOCKABLE Object {
   uint32_t GetReadShiftRegister();
   void UpdateReadShiftRegister(bool read);
 
+  uint32_t GetPadding() {
+    return x_padding_;
+  }
+  void SetPadding(uint32_t val) {
+    x_padding_ = val;
+  }
+
   template<VerifyObjectFlags kVerifyFlags = kDefaultVerifyFlags,
            ReadBarrierOption kReadBarrierOption = kWithReadBarrier>
   ALWAYS_INLINE Class* GetClass() SHARED_REQUIRES(Locks::mutator_lock_);

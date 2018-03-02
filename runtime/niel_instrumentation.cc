@@ -3,6 +3,7 @@
 #include "gc/allocator/rosalloc.h"
 #include "gc/collector/garbage_collector.h"
 #include "gc/heap.h"
+#include "gc/task_processor.h"
 #include "gc/space/rosalloc_space.h"
 #include "gc/space/space.h"
 #include "globals.h"
@@ -16,8 +17,7 @@
 #include <ctime>
 #include <fstream>
 #include <map>
-#include <unistd.h>
-#include <sys/types.h>
+#include <vector>
 
 #include "niel_bivariate_histogram.h"
 #include "niel_histogram.h"
@@ -28,6 +28,7 @@ namespace nielinst {
 
 /* Constants */
 const int LOG_INTERVAL_SECONDS = 10;
+const int MAGIC_NUM = 42424242;
 
 /* Internal functions */
 void maybePrintLog();
@@ -98,6 +99,10 @@ BivariateHistogram objectSizeVsPointerFracHist(10, 0, 1000, 10, 0, 1);
 
 std::fstream swapfile;
 uint32_t pid = 0;
+std::map<void *, std::streampos> objectOffsetMap;
+std::map<void *, size_t> objectSizeMap;
+std::vector<mirror::Object *> writeQueue;
+Mutex writeQueueMutex("WriteQueueMutex", kLoggingLock);
 
 void RecordRosAllocAlloc(Thread * self, size_t size, RosAllocAllocType type) {
     instMutex.ExclusiveLock(self);
@@ -173,6 +178,150 @@ void SetHeap(gc::Heap * inHeap) {
     heap = inHeap;
 }
 
+void GcRecordFree(Thread * self, mirror::Object * object) {
+    writeQueueMutex.ExclusiveLock(self);
+
+    auto writeQueuePos = std::find(writeQueue.begin(), writeQueue.end(), object);
+    if (writeQueuePos != writeQueue.end()) {
+        writeQueue.erase(writeQueuePos);
+    }
+
+    writeQueueMutex.ExclusiveUnlock(self);
+}
+
+class WriteTask : public gc::HeapTask {
+  public:
+    WriteTask(uint64_t target_time) : gc::HeapTask(target_time) { }
+
+    virtual void Run(Thread * self) {
+        bool done = false;
+        uint64_t startTime = NanoTime();
+        bool ioError = false;
+
+        int numGarbageObjects = 0;
+        int numNullClasses = 0;
+        int numSpacelessObjects = 0;
+        int numResizedObjects = 0;
+
+        Locks::mutator_lock_->ReaderLock(self);
+        while (!done) {
+            mirror::Object * object = nullptr;
+
+            writeQueueMutex.ExclusiveLock(self);
+            if (writeQueue.size() == 0) {
+                done = true;
+            }
+            else {
+                object = writeQueue.front();
+                writeQueue.erase(writeQueue.begin());
+            }
+            writeQueueMutex.ExclusiveUnlock(self);
+
+            bool objectInSpace = false;
+            gc::Heap * tempHeap = Runtime::Current()->GetHeap();
+            for (auto & space : tempHeap->GetContinuousSpaces()) {
+                if (space->Contains(object)) {
+                    objectInSpace = true;
+                }
+            }
+            for (auto & space : tempHeap->GetDiscontinuousSpaces()) {
+                if (space->Contains(object)) {
+                    objectInSpace = true;
+                }
+            }
+            if (!objectInSpace) {
+                numSpacelessObjects++;
+            }
+
+            bool validObject = false;
+            if (object != nullptr && objectInSpace) {
+                object->SetIgnoreAccessFlag();
+                if (object->GetPadding() == MAGIC_NUM) {
+                    if (object->GetClass() != nullptr) {
+                        validObject = true;
+                    }
+                    else {
+                        numNullClasses++;
+                    }
+                }
+                else {
+                    numGarbageObjects++;
+                }
+                object->ClearIgnoreAccessFlag();
+            }
+
+            if (validObject) {
+                object->SetIgnoreAccessFlag();
+                size_t objectSize = object->SizeOf();
+                object->ClearIgnoreAccessFlag();
+                if (objectOffsetMap.find(object) == objectOffsetMap.end()) {
+                    std::streampos offset = swapfile.tellp();
+                    swapfile.write((char *)object, objectSize);
+                    bool writeError = checkStreamError(swapfile,
+                            "writing object to swapfile for the first time in WriteTask");
+                    if (writeError) {
+                        ioError = true;
+                    }
+                    objectOffsetMap[object] = offset;
+                    objectSizeMap[object] = objectSize;
+                }
+                else {
+                    std::streampos offset = objectOffsetMap[object];
+                    size_t size = objectSizeMap[object];
+                    if (size != objectSize) {
+                        numResizedObjects++;
+                    }
+                    else {
+                        std::streampos curpos = swapfile.tellp();
+                        swapfile.seekp(offset);
+                        swapfile.write((char *)object, objectSize);
+                        bool writeError = checkStreamError(swapfile,
+                                "writing object to swapfile again in WriteTask");
+                        if (writeError) {
+                            ioError = true;
+                        }
+                        swapfile.seekp(curpos);
+                    }
+                }
+
+                if (ioError) {
+                    done = true;
+                }
+
+                uint64_t currentTime = NanoTime();
+                if (currentTime - startTime > 300000000) {
+                    done = true;
+                }
+            }
+        }
+        Locks::mutator_lock_->ReaderUnlock(self);
+
+        if (numGarbageObjects > 0 || numNullClasses > 0 || numSpacelessObjects > 0
+                || numResizedObjects > 0) {
+            LOG(INFO) << "NIEL WriteTask irregularities: " << numGarbageObjects
+                      << " garbage objects, " << numNullClasses << " null classes, "
+                      << numSpacelessObjects << " objects not in any space, "
+                      << numResizedObjects << " resized objects";
+        }
+
+        uint64_t nanoTime = NanoTime();
+        uint64_t targetTime = nanoTime + 3000000000;
+        Runtime * runtime = Runtime::Current();
+        gc::Heap * curHeap = (runtime == nullptr ? nullptr : runtime->GetHeap());
+        gc::TaskProcessor * taskProcessor =
+            (curHeap == nullptr ? nullptr : curHeap->GetTaskProcessor());
+        if (taskProcessor != nullptr && taskProcessor->IsRunning()) {
+            if (ioError) {
+                LOG(INFO) << "NIEL not scheduling WriteTask again due to IO error";
+            }
+            else {
+                taskProcessor->AddTask(self, new WriteTask(targetTime));
+            }
+        }
+    }
+};
+
+
 void StartAccessCount(gc::collector::GarbageCollector * gc) {
     if (errorCount > 0) {
         LOG(INFO) << "NIEL (GC " << gc->GetName() << "): error count " << errorCount << " on prev GC";
@@ -213,14 +362,23 @@ void StartAccessCount(gc::collector::GarbageCollector * gc) {
     if (curPid != pid) {
         pid = curPid;
         openFile(swapfilePath, swapfile);
+        objectOffsetMap.clear();
+        objectSizeMap.clear();
+        writeQueue.clear();
 
         swapfile.write((char *)&pid, 4);
         swapfile.flush();
-        checkStreamError(swapfile, "after opening swapfile");
+        bool ioError = checkStreamError(swapfile, "after opening swapfile");
+
+        if (heap->GetTaskProcessor() != nullptr && heap->GetTaskProcessor()->IsRunning()) {
+            if (ioError) {
+                LOG(INFO) << "NIEL not scheduling first WriteTask due to IO error";
+            }
+            else {
+                heap->GetTaskProcessor()->AddTask(Thread::Current(), new WriteTask(NanoTime()));
+            }
+        }
     }
-    swapfile.write("GC", 2);
-    swapfile.flush();
-    checkStreamError(swapfile, "after write");
 }
 
 void CountAccess(gc::collector::GarbageCollector * gc ATTRIBUTE_UNUSED, mirror::Object * object) {
@@ -295,6 +453,14 @@ void CountAccess(gc::collector::GarbageCollector * gc ATTRIBUTE_UNUSED, mirror::
         objectSizeVsPointerFracHist.Add(objectSize, pointerSizeFrac);
 
         totalObjects += 1;
+
+        if (objectSize > 1000) {
+            Thread * self = Thread::Current();
+            writeQueueMutex.ExclusiveLock(self);
+            writeQueue.push_back(object);
+            object->SetPadding(MAGIC_NUM);
+            writeQueueMutex.ExclusiveUnlock(self);
+        }
     }
     else {
         errorCount += 1;
