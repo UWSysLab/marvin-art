@@ -3,7 +3,6 @@
 #include "gc/allocator/rosalloc.h"
 #include "gc/collector/garbage_collector.h"
 #include "gc/heap.h"
-#include "gc/task_processor.h"
 #include "gc/space/rosalloc_space.h"
 #include "gc/space/space.h"
 #include "globals.h"
@@ -14,34 +13,27 @@
 #include "thread.h"
 
 #include <cstring>
-#include <ctime>
-#include <fstream>
 #include <map>
-#include <vector>
 
 #include "niel_bivariate_histogram.h"
 #include "niel_histogram.h"
 
 namespace art {
 
-namespace nielinst {
+namespace niel {
+
+namespace inst {
 
 /* Constants */
 const int LOG_INTERVAL_SECONDS = 10;
-const int MAGIC_NUM = 42424242;
 
 /* Internal functions */
 void maybePrintLog();
 void printAllocCounts();
 void printHeap();
 
-std::string getPackageName();
-void openFile(const std::string & path, std::fstream & stream);
-bool checkStreamError(const std::ios & stream, const std::string & msg);
-
 /* Variables */
 Mutex instMutex("NielInstrumentationMutex", kLoggingLock);
-gc::Heap * heap = NULL;
 time_t lastLogTime;
 
 /*     Locked with instMutex */
@@ -96,13 +88,6 @@ BivariateHistogram writesVsPointerFracHist(10, 1, 100, 10, 0, 1);
 BivariateHistogram readShiftRegVsPointerFracHist(16, 0, 16, 10, 0, 1);
 BivariateHistogram writeShiftRegVsPointerFracHist(16, 0, 16, 10, 0, 1);
 BivariateHistogram objectSizeVsPointerFracHist(10, 0, 1000, 10, 0, 1);
-
-std::fstream swapfile;
-uint32_t pid = 0;
-std::map<void *, std::streampos> objectOffsetMap;
-std::map<void *, size_t> objectSizeMap;
-std::vector<mirror::Object *> writeQueue;
-Mutex writeQueueMutex("WriteQueueMutex", kLoggingLock);
 
 void RecordRosAllocAlloc(Thread * self, size_t size, RosAllocAllocType type) {
     instMutex.ExclusiveLock(self);
@@ -174,154 +159,6 @@ void RecordFree(Thread * self, gc::space::Space * space, size_t size, int count)
     instMutex.ExclusiveUnlock(self);
 }
 
-void SetHeap(gc::Heap * inHeap) {
-    heap = inHeap;
-}
-
-void GcRecordFree(Thread * self, mirror::Object * object) {
-    writeQueueMutex.ExclusiveLock(self);
-
-    auto writeQueuePos = std::find(writeQueue.begin(), writeQueue.end(), object);
-    if (writeQueuePos != writeQueue.end()) {
-        writeQueue.erase(writeQueuePos);
-    }
-
-    writeQueueMutex.ExclusiveUnlock(self);
-}
-
-class WriteTask : public gc::HeapTask {
-  public:
-    WriteTask(uint64_t target_time) : gc::HeapTask(target_time) { }
-
-    virtual void Run(Thread * self) {
-        bool done = false;
-        uint64_t startTime = NanoTime();
-        bool ioError = false;
-
-        int numGarbageObjects = 0;
-        int numNullClasses = 0;
-        int numSpacelessObjects = 0;
-        int numResizedObjects = 0;
-
-        Locks::mutator_lock_->ReaderLock(self);
-        while (!done) {
-            mirror::Object * object = nullptr;
-
-            writeQueueMutex.ExclusiveLock(self);
-            if (writeQueue.size() == 0) {
-                done = true;
-            }
-            else {
-                object = writeQueue.front();
-                writeQueue.erase(writeQueue.begin());
-            }
-            writeQueueMutex.ExclusiveUnlock(self);
-
-            bool objectInSpace = false;
-            gc::Heap * tempHeap = Runtime::Current()->GetHeap();
-            for (auto & space : tempHeap->GetContinuousSpaces()) {
-                if (space->Contains(object)) {
-                    objectInSpace = true;
-                }
-            }
-            for (auto & space : tempHeap->GetDiscontinuousSpaces()) {
-                if (space->Contains(object)) {
-                    objectInSpace = true;
-                }
-            }
-            if (!objectInSpace) {
-                numSpacelessObjects++;
-            }
-
-            bool validObject = false;
-            if (object != nullptr && objectInSpace) {
-                object->SetIgnoreAccessFlag();
-                if (object->GetPadding() == MAGIC_NUM) {
-                    if (object->GetClass() != nullptr) {
-                        validObject = true;
-                    }
-                    else {
-                        numNullClasses++;
-                    }
-                }
-                else {
-                    numGarbageObjects++;
-                }
-                object->ClearIgnoreAccessFlag();
-            }
-
-            if (validObject) {
-                object->SetIgnoreAccessFlag();
-                size_t objectSize = object->SizeOf();
-                object->ClearIgnoreAccessFlag();
-                if (objectOffsetMap.find(object) == objectOffsetMap.end()) {
-                    std::streampos offset = swapfile.tellp();
-                    swapfile.write((char *)object, objectSize);
-                    bool writeError = checkStreamError(swapfile,
-                            "writing object to swapfile for the first time in WriteTask");
-                    if (writeError) {
-                        ioError = true;
-                    }
-                    objectOffsetMap[object] = offset;
-                    objectSizeMap[object] = objectSize;
-                }
-                else {
-                    std::streampos offset = objectOffsetMap[object];
-                    size_t size = objectSizeMap[object];
-                    if (size != objectSize) {
-                        numResizedObjects++;
-                    }
-                    else {
-                        std::streampos curpos = swapfile.tellp();
-                        swapfile.seekp(offset);
-                        swapfile.write((char *)object, objectSize);
-                        bool writeError = checkStreamError(swapfile,
-                                "writing object to swapfile again in WriteTask");
-                        if (writeError) {
-                            ioError = true;
-                        }
-                        swapfile.seekp(curpos);
-                    }
-                }
-
-                if (ioError) {
-                    done = true;
-                }
-
-                uint64_t currentTime = NanoTime();
-                if (currentTime - startTime > 300000000) {
-                    done = true;
-                }
-            }
-        }
-        Locks::mutator_lock_->ReaderUnlock(self);
-
-        if (numGarbageObjects > 0 || numNullClasses > 0 || numSpacelessObjects > 0
-                || numResizedObjects > 0) {
-            LOG(INFO) << "NIEL WriteTask irregularities: " << numGarbageObjects
-                      << " garbage objects, " << numNullClasses << " null classes, "
-                      << numSpacelessObjects << " objects not in any space, "
-                      << numResizedObjects << " resized objects";
-        }
-
-        uint64_t nanoTime = NanoTime();
-        uint64_t targetTime = nanoTime + 3000000000;
-        Runtime * runtime = Runtime::Current();
-        gc::Heap * curHeap = (runtime == nullptr ? nullptr : runtime->GetHeap());
-        gc::TaskProcessor * taskProcessor =
-            (curHeap == nullptr ? nullptr : curHeap->GetTaskProcessor());
-        if (taskProcessor != nullptr && taskProcessor->IsRunning()) {
-            if (ioError) {
-                LOG(INFO) << "NIEL not scheduling WriteTask again due to IO error";
-            }
-            else {
-                taskProcessor->AddTask(self, new WriteTask(targetTime));
-            }
-        }
-    }
-};
-
-
 void StartAccessCount(gc::collector::GarbageCollector * gc) {
     if (errorCount > 0) {
         LOG(INFO) << "NIEL (GC " << gc->GetName() << "): error count " << errorCount << " on prev GC";
@@ -356,29 +193,6 @@ void StartAccessCount(gc::collector::GarbageCollector * gc) {
     readShiftRegVsPointerFracHist.Clear();
     writeShiftRegVsPointerFracHist.Clear();
     objectSizeVsPointerFracHist.Clear();
-
-    std::string swapfilePath("/data/data/" + getPackageName() + "/swapfile");
-    uint32_t curPid = getpid();
-    if (curPid != pid) {
-        pid = curPid;
-        openFile(swapfilePath, swapfile);
-        objectOffsetMap.clear();
-        objectSizeMap.clear();
-        writeQueue.clear();
-
-        swapfile.write((char *)&pid, 4);
-        swapfile.flush();
-        bool ioError = checkStreamError(swapfile, "after opening swapfile");
-
-        if (heap->GetTaskProcessor() != nullptr && heap->GetTaskProcessor()->IsRunning()) {
-            if (ioError) {
-                LOG(INFO) << "NIEL not scheduling first WriteTask due to IO error";
-            }
-            else {
-                heap->GetTaskProcessor()->AddTask(Thread::Current(), new WriteTask(NanoTime()));
-            }
-        }
-    }
 }
 
 void CountAccess(gc::collector::GarbageCollector * gc ATTRIBUTE_UNUSED, mirror::Object * object) {
@@ -414,7 +228,6 @@ void CountAccess(gc::collector::GarbageCollector * gc ATTRIBUTE_UNUSED, mirror::
         bool wasWritten = false;
 
         if (readCounterVal > 0) {
-            object->ClearReadCounter();
             objectsRead += 1;
             wasRead = true;
             readTotalPointerSize += sizeOfPointers;
@@ -426,7 +239,6 @@ void CountAccess(gc::collector::GarbageCollector * gc ATTRIBUTE_UNUSED, mirror::
         }
 
         if (writeCounterVal > 0) {
-            object->ClearWriteCounter();
             objectsWritten += 1;
             wasWritten = true;
         }
@@ -434,9 +246,6 @@ void CountAccess(gc::collector::GarbageCollector * gc ATTRIBUTE_UNUSED, mirror::
         if (wasRead && wasWritten) {
             objectsReadAndWritten += 1;
         }
-
-        object->UpdateReadShiftRegister(wasRead);
-        object->UpdateWriteShiftRegister(wasWritten);
 
         uint32_t rsrVal = object->GetReadShiftRegister();
         uint32_t wsrVal = object->GetWriteShiftRegister();
@@ -453,14 +262,6 @@ void CountAccess(gc::collector::GarbageCollector * gc ATTRIBUTE_UNUSED, mirror::
         objectSizeVsPointerFracHist.Add(objectSize, pointerSizeFrac);
 
         totalObjects += 1;
-
-        if (objectSize > 1000) {
-            Thread * self = Thread::Current();
-            writeQueueMutex.ExclusiveLock(self);
-            writeQueue.push_back(object);
-            object->SetPadding(MAGIC_NUM);
-            writeQueueMutex.ExclusiveUnlock(self);
-        }
     }
     else {
         errorCount += 1;
@@ -508,35 +309,7 @@ void FinishAccessCount(gc::collector::GarbageCollector * gc) {
                   << writeShiftRegVsPointerFracHist.Print(false);
         LOG(INFO) << "NIEL object size vs pointer frac hist:\n"
                   << objectSizeVsPointerFracHist.Print(false);
-        LOG(INFO) << "NIEL package name: " << getPackageName();
     }
-}
-
-std::string getPackageName() {
-    std::ifstream cmdlineFile("/proc/self/cmdline");
-    std::string cmdline;
-    getline(cmdlineFile, cmdline);
-    cmdlineFile.close();
-    return cmdline.substr(0, cmdline.find((char)0));
-}
-
-void openFile(const std::string & path, std::fstream & stream) {
-    stream.open(path, std::ios::binary | std::ios::in | std::ios::out | std::ios::trunc);
-    if (!stream) {
-        stream.close();
-        stream.open(path, std::ios::binary | std::ios::out);
-        stream.close();
-        stream.open(path, std::ios::binary | std::ios::in | std::ios::out | std::ios::trunc);
-    }
-}
-
-bool checkStreamError(const std::ios & stream, const std::string & msg) {
-    bool error = !stream;
-    if (error) {
-        LOG(ERROR) << "NIEL stream error: " << msg << " (" << stream.good() << " "
-                   << stream.eof() << " " << stream.fail() << " " << stream.bad() << ")";
-    }
-    return error;
 }
 
 void maybePrintLog() {
@@ -571,11 +344,12 @@ void printAllocCounts() {
 }
 
 void printHeap() {
+    gc::Heap * heap = Runtime::Current()->GetHeap();
     if (heap == NULL) {
         return;
     }
 
-    LOG(INFO) << "NIEL num spaces " << heap->nielinst_spaces_.size();
+    LOG(INFO) << "NIEL num spaces " << (heap->nielinst_spaces_.size());
     for (auto it = heap->nielinst_spaces_.begin(); it != heap->nielinst_spaces_.end(); it++) {
         LOG(INFO) << "NIEL space " << (*it)->GetName()
                   << " continuous? " << (*it)->IsContinuousSpace()
@@ -583,8 +357,10 @@ void printHeap() {
                   << " alloc? " << (*it)->IsAllocSpace()
                   ;
     }
+
     LOG(INFO) << "NIEL num garbage collectors " << heap->nielinst_GetGarbageCollectors()->size();
-    for (auto it = heap->nielinst_GetGarbageCollectors()->begin(); it != heap->nielinst_GetGarbageCollectors()->end(); it++) {
+    for (auto it = heap->nielinst_GetGarbageCollectors()->begin();
+            it != heap->nielinst_GetGarbageCollectors()->end(); it++) {
         LOG(INFO) << "NIEL garbage collector " << (*it)->GetName()
                   << " semi_space? " << ((*it) == heap->nielinst_GetSemiSpace())
                   << " mark_compact? " << ((*it) == heap->nielinst_GetMarkCompact())
@@ -601,5 +377,6 @@ void printHeap() {
     }
 }
 
-} // namespace nielinst
+} // namespace inst
+} // namespace niel
 } // namespace art

@@ -20,7 +20,9 @@ namespace mirror {
 }
 class Thread;
 
-namespace nielinst {
+namespace niel {
+
+namespace inst {
 
 enum RosAllocAllocType {
     ROSALLOC_ALLOC_THREAD_LOCAL, ROSALLOC_ALLOC_NORMAL, ROSALLOC_ALLOC_LARGE
@@ -36,16 +38,13 @@ void RecordRosAllocFree(Thread * self, size_t size, RosAllocFreeType type);
 void RecordAlloc(Thread * self, gc::space::Space * space, size_t size);
 void RecordFree(Thread * self, gc::space::Space * space, size_t size, int count);
 
-void SetHeap(gc::Heap * inHeap);
-
 void StartAccessCount(gc::collector::GarbageCollector * gc);
 void CountAccess(gc::collector::GarbageCollector * gc, mirror::Object * object)
     SHARED_REQUIRES(Locks::mutator_lock_);
 void FinishAccessCount(gc::collector::GarbageCollector * gc);
 
-void GcRecordFree(Thread * self, mirror::Object * object);
-
-} // namespace nielinst
+} // namespace inst
+} // namespace niel
 } // namespace art
 
 #endif

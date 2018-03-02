@@ -32,6 +32,7 @@
 #include "thread-inl.h"
 
 #include "niel_instrumentation.h"
+#include "niel_swap.h"
 
 namespace art {
 namespace gc {
@@ -172,7 +173,7 @@ mirror::Object* LargeObjectMapSpace::Alloc(Thread* self, size_t num_bytes,
   total_bytes_allocated_ += allocation_size;
   ++num_objects_allocated_;
   ++total_objects_allocated_;
-  nielinst::RecordAlloc(self, this, allocation_size);
+  niel::inst::RecordAlloc(self, this, allocation_size);
   return obj;
 }
 
@@ -206,8 +207,8 @@ size_t LargeObjectMapSpace::Free(Thread* self, mirror::Object* ptr) {
   --num_objects_allocated_;
   delete mem_map;
   large_objects_.erase(it);
-  nielinst::RecordFree(self, this, allocation_size, 1);
-  nielinst::GcRecordFree(self, ptr);
+  niel::inst::RecordFree(self, this, allocation_size, 1);
+  niel::swap::GcRecordFree(self, ptr);
   return allocation_size;
 }
 
@@ -467,8 +468,8 @@ size_t FreeListSpace::Free(Thread* self, mirror::Object* obj) {
     // Can't disallow reads since we use them to find next chunks during coalescing.
     mprotect(obj, allocation_size, PROT_READ);
   }
-  nielinst::RecordFree(self, this, allocation_size, 1);
-  nielinst::GcRecordFree(self, obj);
+  niel::inst::RecordFree(self, this, allocation_size, 1);
+  niel::swap::GcRecordFree(self, obj);
   return allocation_size;
 }
 
@@ -537,7 +538,7 @@ mirror::Object* FreeListSpace::Alloc(Thread* self, size_t num_bytes, size_t* byt
   }
   new_info->SetPrevFreeBytes(0);
   new_info->SetByteSize(allocation_size, false);
-  nielinst::RecordAlloc(self, this, allocation_size);
+  niel::inst::RecordAlloc(self, this, allocation_size);
   return obj;
 }
 

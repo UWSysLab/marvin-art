@@ -6,7 +6,9 @@
 
 namespace art {
 
-namespace nielinst {
+namespace niel {
+
+namespace inst {
 
 #define BIN_FMT std::defaultfloat << std::setprecision(6)
 #define SCALED_NUM_FMT std::fixed << std::setprecision(3)
@@ -180,5 +182,6 @@ void BivariateHistogram::Clear() {
     }
 }
 
-} // namespace nielinst
+} // namespace inst
+} // namespace niel
 } // namespace art

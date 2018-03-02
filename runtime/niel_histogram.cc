@@ -6,7 +6,9 @@
 
 namespace art {
 
-namespace nielinst {
+namespace niel {
+
+namespace inst {
 
 #define BIN_FMT std::defaultfloat << std::setprecision(6)
 #define SCALED_NUM_FMT std::fixed << std::setprecision(3)
@@ -129,5 +131,6 @@ std::string Histogram::Print(bool scaled, bool separateLines) {
     return output.str();
 }
 
-} // namespace nielinst
+} // namespace inst
+} // namespace niel
 } // namespace art

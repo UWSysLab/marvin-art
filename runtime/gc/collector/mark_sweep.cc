@@ -45,6 +45,7 @@
 #include "thread_list.h"
 
 #include "niel_instrumentation.h"
+#include "niel_swap.h"
 
 namespace art {
 namespace gc {
@@ -255,7 +256,8 @@ void MarkSweep::RevokeAllThreadLocalAllocationStacks(Thread* self) {
 }
 
 void MarkSweep::MarkingPhase() {
-  nielinst::StartAccessCount(this);
+  niel::swap::InitIfNecessary();
+  niel::inst::StartAccessCount(this);
   TimingLogger::ScopedTiming t(__FUNCTION__, GetTimings());
   Thread* self = Thread::Current();
   BindBitmaps();
@@ -268,7 +270,7 @@ void MarkSweep::MarkingPhase() {
   MarkReachableObjects();
   // Pre-clean dirtied cards to reduce pauses.
   PreCleanCards();
-  nielinst::FinishAccessCount(this);
+  niel::inst::FinishAccessCount(this);
 }
 
 class MarkSweep::ScanObjectVisitor {
@@ -1428,7 +1430,8 @@ void MarkSweep::ProcessMarkStack(bool paused) {
       }
       DCHECK(obj != nullptr);
       ScanObject(obj);
-      nielinst::CountAccess(this, obj);
+      niel::inst::CountAccess(this, obj);
+      niel::swap::UpdateAndCheck(obj);
     }
   }
 }

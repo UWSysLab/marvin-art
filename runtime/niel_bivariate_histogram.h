@@ -5,7 +5,9 @@
 
 namespace art {
 
-namespace nielinst {
+namespace niel {
+
+namespace inst {
 
 class Histogram;
 
@@ -53,7 +55,8 @@ class BivariateHistogram {
     double maxY_;
 };
 
-} // namespace nielinst
+} // namespace inst
+} // namespace niel
 } // namespace art
 
 #endif // ART_RUNTIME_NIEL_BIVARIATE_HISTOGRAM_H_

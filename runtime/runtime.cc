@@ -1047,7 +1047,6 @@ bool Runtime::Init(RuntimeArgumentMap&& runtime_options_in) {
     LOG(ERROR) << "Dex file fallback disabled, cannot continue without image.";
     return false;
   }
-  nielinst::SetHeap(heap_);
 
   dump_gc_performance_on_shutdown_ = runtime_options.Exists(Opt::DumpGCPerformanceOnShutdown);
 

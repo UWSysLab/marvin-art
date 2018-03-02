@@ -5,7 +5,9 @@
 
 namespace art {
 
-namespace nielinst {
+namespace niel {
+
+namespace inst {
 
 class Histogram {
   public:
@@ -32,7 +34,8 @@ class Histogram {
     double sum_; // used for average
 };
 
-} // namespace nielinst
+} // namespace inst
+} // namespace niel
 } // namespace art
 
 #endif // ART_RUNTIME_NIEL_HISTOGRAM_H_

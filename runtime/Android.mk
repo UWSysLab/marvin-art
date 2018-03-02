@@ -162,6 +162,7 @@ LIBART_COMMON_SRC_FILES := \
   niel_bivariate_histogram.cc \
   niel_histogram.cc \
   niel_instrumentation.cc \
+  niel_swap.cc \
   oat.cc \
   oat_file.cc \
   oat_file_assistant.cc \
