@@ -37,6 +37,8 @@
 #include "string-inl.h"
 #include "throwable.h"
 
+#include "niel_swap.h"
+
 namespace art {
 namespace mirror {
 
@@ -764,6 +766,7 @@ inline void Object::SetField64Volatile(MemberOffset field_offset, int64_t new_va
 
 template<typename kSize, bool kIsVolatile>
 inline void Object::SetField(MemberOffset field_offset, kSize new_value) {
+  niel::swap::LockObjects();
   if (!GetIgnoreAccessFlag()) {
     IncrWriteCounter();
   }
@@ -774,6 +777,7 @@ inline void Object::SetField(MemberOffset field_offset, kSize new_value) {
   } else {
     reinterpret_cast<Atomic<kSize>*>(addr)->StoreJavaData(new_value);
   }
+  niel::swap::UnlockObjects();
 }
 
 template<typename kSize, bool kIsVolatile>
@@ -855,6 +859,7 @@ template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVer
     bool kIsVolatile>
 inline void Object::SetFieldObjectWithoutWriteBarrier(MemberOffset field_offset,
                                                       Object* new_value) {
+  niel::swap::LockObjects();
   if (!GetIgnoreAccessFlag()) {
     IncrWriteCounter();
   }
@@ -887,6 +892,7 @@ inline void Object::SetFieldObjectWithoutWriteBarrier(MemberOffset field_offset,
   } else {
     objref_addr->Assign(new_value);
   }
+  niel::swap::UnlockObjects();
 }
 
 template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVerifyFlags,

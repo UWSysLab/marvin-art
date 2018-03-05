@@ -10,6 +10,7 @@
 #include <ctime>
 #include <fstream>
 #include <map>
+#include <pthread.h>
 #include <vector>
 
 namespace art {
@@ -33,6 +34,7 @@ std::map<void *, std::streampos> objectOffsetMap;
 std::map<void *, size_t> objectSizeMap;
 std::vector<mirror::Object *> writeQueue;
 Mutex writeQueueMutex("WriteQueueMutex", kLoggingLock);
+pthread_mutex_t objectLock = PTHREAD_MUTEX_INITIALIZER;
 
 class WriteTask : public gc::HeapTask {
   public:
@@ -99,9 +101,15 @@ class WriteTask : public gc::HeapTask {
                 object->SetIgnoreAccessFlag();
                 size_t objectSize = object->SizeOf();
                 object->ClearIgnoreAccessFlag();
+
+                char * objectData = new char[objectSize];
+                LockObjects();
+                std::memcpy(objectData, object, objectSize);
+                UnlockObjects();
+
                 if (objectOffsetMap.find(object) == objectOffsetMap.end()) {
                     std::streampos offset = swapfile.tellp();
-                    swapfile.write((char *)object, objectSize);
+                    swapfile.write(objectData, objectSize);
                     bool writeError = checkStreamError(swapfile,
                             "writing object to swapfile for the first time in WriteTask");
                     if (writeError) {
@@ -119,7 +127,7 @@ class WriteTask : public gc::HeapTask {
                     else {
                         std::streampos curpos = swapfile.tellp();
                         swapfile.seekp(offset);
-                        swapfile.write((char *)object, objectSize);
+                        swapfile.write(objectData, objectSize);
                         bool writeError = checkStreamError(swapfile,
                                 "writing object to swapfile again in WriteTask");
                         if (writeError) {
@@ -128,6 +136,8 @@ class WriteTask : public gc::HeapTask {
                         swapfile.seekp(curpos);
                     }
                 }
+
+                delete[] objectData;
 
                 if (ioError) {
                     done = true;
@@ -237,6 +247,14 @@ void UpdateAndCheck(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock
         object->SetPadding(MAGIC_NUM);
         writeQueueMutex.ExclusiveUnlock(self);
     }
+}
+
+void LockObjects() {
+    pthread_mutex_lock(&objectLock);
+}
+
+void UnlockObjects() {
+    pthread_mutex_unlock(&objectLock);
 }
 
 std::string getPackageName() {

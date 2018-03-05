@@ -27,6 +27,15 @@ void InitIfNecessary();
  */
 void UpdateAndCheck(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_);
 
+/*
+ * Lock and unlock all objects. Used during WriteTask::Run(),
+ * mirror::Object::SetField(), and mirror::SetFieldObjectWithoutWriteBarrier()
+ * to ensure that an object is not modified while WriteTask is taking a
+ * snapshot of it.
+ */
+void LockObjects();
+void UnlockObjects();
+
 } // namespace swap
 } // namespace niel
 } // namespace art
