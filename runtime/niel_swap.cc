@@ -48,6 +48,7 @@ int swapfileSize = 0;
 
 // Locked by writeQueueMutex
 std::vector<mirror::Object *> writeQueue;
+std::set<mirror::Object *> writeSet; // prevent duplicate entries in writeQueue
 
 class WriteTask : public gc::HeapTask {
   public:
@@ -74,6 +75,7 @@ class WriteTask : public gc::HeapTask {
             else {
                 object = writeQueue.front();
                 writeQueue.erase(writeQueue.begin());
+                writeSet.erase(object);
             }
             writeQueueMutex.ExclusiveUnlock(self);
 
@@ -204,6 +206,7 @@ void GcRecordFree(Thread * self, mirror::Object * object) {
     auto writeQueuePos = std::find(writeQueue.begin(), writeQueue.end(), object);
     if (writeQueuePos != writeQueue.end()) {
         writeQueue.erase(writeQueuePos);
+        writeSet.erase(object);
     }
     writeQueueMutex.ExclusiveUnlock(self);
 
@@ -227,6 +230,7 @@ void InitIfNecessary() {
         objectOffsetMap.clear();
         objectSizeMap.clear();
         writeQueue.clear();
+        writeSet.clear();
 
         swapfile.write((char *)&pid, 4);
         swapfile.flush();
@@ -345,8 +349,11 @@ void UpdateAndCheck(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock
     if (objectSize > 5000) {
         Thread * self = Thread::Current();
         writeQueueMutex.ExclusiveLock(self);
-        writeQueue.push_back(object);
-        object->SetPadding(MAGIC_NUM);
+        if (!writeSet.count(object)) {
+            writeSet.insert(object);
+            writeQueue.push_back(object);
+            object->SetPadding(MAGIC_NUM);
+        }
         writeQueueMutex.ExclusiveUnlock(self);
     }
 }
