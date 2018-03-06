@@ -21,6 +21,8 @@ void GcRecordFree(Thread * self, mirror::Object * object);
  */
 void InitIfNecessary();
 
+void CompactSwapFile();
+
 /*
  * Update an object's bookkeeping state and check if it should be
  * written to disk.

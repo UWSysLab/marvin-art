@@ -6,11 +6,13 @@
 #include "mirror/object-inl.h"
 #include "runtime.h"
 
+#include <cstdio>
 #include <cstring>
 #include <ctime>
 #include <fstream>
 #include <map>
 #include <pthread.h>
+#include <set>
 #include <vector>
 
 namespace art {
@@ -21,20 +23,31 @@ namespace swap {
 
 /* Constants */
 const int MAGIC_NUM = 42424242;
+const double COMPACT_THRESHOLD = 0.25;
 
 /* Internal functions */
 std::string getPackageName();
 void openFile(const std::string & path, std::fstream & stream);
 bool checkStreamError(const std::ios & stream, const std::string & msg);
+void validateSwapFile();
 
 /* Variables */
+Mutex writeQueueMutex("WriteQueueMutex", kLoggingLock);
+pthread_mutex_t objectLock = PTHREAD_MUTEX_INITIALIZER;
+
+// Not locked but assumed to be only touched in one thread (because all Tasks,
+// including GC, run on the same fixed thread)
 std::fstream swapfile;
 uint32_t pid = 0;
 std::map<void *, std::streampos> objectOffsetMap;
 std::map<void *, size_t> objectSizeMap;
+int freedObjects = 0;
+long freedSize = 0;
+int swapfileObjects = 0;
+int swapfileSize = 0;
+
+// Locked by writeQueueMutex
 std::vector<mirror::Object *> writeQueue;
-Mutex writeQueueMutex("WriteQueueMutex", kLoggingLock);
-pthread_mutex_t objectLock = PTHREAD_MUTEX_INITIALIZER;
 
 class WriteTask : public gc::HeapTask {
   public:
@@ -117,6 +130,9 @@ class WriteTask : public gc::HeapTask {
                     }
                     objectOffsetMap[object] = offset;
                     objectSizeMap[object] = objectSize;
+
+                    swapfileObjects++;
+                    swapfileSize += objectSize;
                 }
                 else {
                     std::streampos offset = objectOffsetMap[object];
@@ -151,12 +167,19 @@ class WriteTask : public gc::HeapTask {
         }
         Locks::mutator_lock_->ReaderUnlock(self);
 
+        LOG(INFO) << "NIEL done writing objects in WriteTask; swap file has " << swapfileObjects
+                  << " objects, size " << swapfileSize;
         if (numGarbageObjects > 0 || numNullClasses > 0 || numSpacelessObjects > 0
                 || numResizedObjects > 0) {
             LOG(INFO) << "NIEL WriteTask irregularities: " << numGarbageObjects
                       << " garbage objects, " << numNullClasses << " null classes, "
                       << numSpacelessObjects << " objects not in any space, "
                       << numResizedObjects << " resized objects";
+        }
+
+        if ((double)freedSize / swapfileSize > COMPACT_THRESHOLD) {
+            CompactSwapFile();
+            validateSwapFile();
         }
 
         uint64_t nanoTime = NanoTime();
@@ -178,13 +201,21 @@ class WriteTask : public gc::HeapTask {
 
 void GcRecordFree(Thread * self, mirror::Object * object) {
     writeQueueMutex.ExclusiveLock(self);
-
     auto writeQueuePos = std::find(writeQueue.begin(), writeQueue.end(), object);
     if (writeQueuePos != writeQueue.end()) {
         writeQueue.erase(writeQueuePos);
     }
-
     writeQueueMutex.ExclusiveUnlock(self);
+
+    if (objectOffsetMap.count(object) && objectSizeMap.count(object)) {
+        freedObjects++;
+        freedSize += objectSizeMap[object];
+        objectOffsetMap.erase(object);
+        objectSizeMap.erase(object);
+    }
+    else if (objectOffsetMap.count(object) || objectSizeMap.count(object)) {
+        LOG(INFO) << "NIEL ERROR: object in one of the object maps but not the other";
+    }
 }
 
 void InitIfNecessary() {
@@ -210,6 +241,77 @@ void InitIfNecessary() {
                 heap->GetTaskProcessor()->AddTask(Thread::Current(), new WriteTask(NanoTime()));
             }
         }
+    }
+}
+
+void CompactSwapFile() {
+    LOG(INFO) << "NIEL compacting swap file";
+
+    std::string swapfilePath("/data/data/" + getPackageName() + "/swapfile");
+    std::string oldSwapfilePath("/data/data/" + getPackageName() + "/oldswapfile");
+    bool ioError = false;
+
+    freedObjects = 0;
+    freedSize = 0;
+    swapfileObjects = 0;
+    swapfileSize = 0;
+
+    swapfile.close();
+    rename(swapfilePath.c_str(), oldSwapfilePath.c_str());
+
+    std::fstream oldSwapfile;
+    oldSwapfile.open(oldSwapfilePath, std::ios::binary | std::ios::in);
+
+    openFile(swapfilePath, swapfile);
+
+    std::map<void *, std::streampos> newObjectOffsetMap;
+
+    if (checkStreamError(oldSwapfile, "in oldSwapfile before compaction")) {
+        ioError = true;
+    }
+    if (checkStreamError(swapfile, "in swapfile before compaction")) {
+        ioError = true;
+    }
+
+    for (auto it = objectOffsetMap.begin(); it != objectOffsetMap.end(); it++) {
+        if (ioError == true) {
+            break;
+        }
+
+        void * object = it->first;
+        std::streampos oldPos = it->second;
+        size_t objectSize = objectSizeMap[object];
+        char * objectData = new char[objectSize];
+
+        oldSwapfile.seekg(oldPos);
+        oldSwapfile.read(objectData, objectSize);
+
+        std::streampos newPos = swapfile.tellp();
+        swapfile.write(objectData, objectSize);
+        newObjectOffsetMap[object] = newPos;
+        delete[] objectData;
+
+        swapfileObjects++;
+        swapfileSize += objectSize;
+
+        if (checkStreamError(oldSwapfile, "in oldSwapfile during compaction")) {
+            ioError = true;
+        }
+        if (checkStreamError(swapfile, "in swapfile during compaction")) {
+            ioError = true;
+        }
+    }
+
+    objectOffsetMap = newObjectOffsetMap;
+
+    oldSwapfile.close();
+
+    if (ioError) {
+        LOG(INFO) << "NIEL detected errors while compacting swap file";
+    }
+    else {
+        LOG(INFO) << "NIEL finished compacting swap file; new swap file has " << swapfileObjects
+                  << " objects, size " << swapfileSize;
     }
 }
 
@@ -240,7 +342,7 @@ void UpdateAndCheck(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock
     //uint32_t rsrVal = object->GetReadShiftRegister();
     //uint32_t wsrVal = object->GetWriteShiftRegister();
 
-    if (objectSize > 1000) {
+    if (objectSize > 5000) {
         Thread * self = Thread::Current();
         writeQueueMutex.ExclusiveLock(self);
         writeQueue.push_back(object);
@@ -255,6 +357,67 @@ void LockObjects() {
 
 void UnlockObjects() {
     pthread_mutex_unlock(&objectLock);
+}
+
+void validateSwapFile() {
+    bool error = false;
+
+    LOG(INFO) << "NIEL starting swap file validation";
+
+    if (objectOffsetMap.size() != objectSizeMap.size()) {
+        LOG(INFO) << "NIEL ERROR: objectOffsetMap and objectSizeMap sizes differ";
+        error = true;
+    }
+
+    std::streampos curPos = swapfile.tellp();
+    if (checkStreamError(swapfile, "validation initial tellp()")) {
+        error = true;
+    }
+
+    for (auto it = objectOffsetMap.begin(); it != objectOffsetMap.end(); it++) {
+        void * object = it->first;
+        std::streampos offset = it->second;
+
+        if (!objectSizeMap.count(object)) {
+            LOG(INFO) << "NIEL ERROR: objectSizeMap does not contain object " << object;
+            error = true;
+        }
+
+        size_t objectSize = objectSizeMap[object];
+        char * objectData = new char[objectSize];
+
+        swapfile.seekg(offset);
+        if (checkStreamError(swapfile, "validation seekg()")) {
+            error = true;
+        }
+        swapfile.read(objectData, objectSize);
+        if (checkStreamError(swapfile, "validation read()")) {
+            error = true;
+        }
+
+        if (objectSize < 16) {
+            LOG(INFO) << "NIEL ERROR: object size " << objectSize << " is too small";
+            error = true;
+        }
+
+        int * padding = (int *)&objectData[12];
+        if (*padding != MAGIC_NUM) {
+            LOG(INFO) << "NIEL ERROR: object padding does not match magic num";
+            error = true;
+        }
+    }
+
+    swapfile.seekp(curPos);
+    if (checkStreamError(swapfile, "validation final seekp()")) {
+        error = true;
+    }
+
+    if (error) {
+        LOG(INFO) << "NIEL swap file validation detected errors";
+    }
+    else {
+        LOG(INFO) << "NIEL swap file validation successful";
+    }
 }
 
 std::string getPackageName() {
