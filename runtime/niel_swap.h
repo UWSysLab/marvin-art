@@ -24,10 +24,10 @@ void InitIfNecessary();
 void CompactSwapFile();
 
 /*
- * Update an object's bookkeeping state and check if it should be
- * written to disk.
+ * Check if an object should be written to disk and then update its bookeeping
+ * state.
  */
-void UpdateAndCheck(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_);
+void CheckAndUpdate(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_);
 
 /*
  * Lock and unlock all objects. Used during WriteTask::Run(),

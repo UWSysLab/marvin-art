@@ -64,12 +64,15 @@ class WriteTask : public gc::HeapTask {
         int numSpacelessObjects = 0;
         int numResizedObjects = 0;
 
+        int queueSize = 0;
+
         Locks::mutator_lock_->ReaderLock(self);
         while (!done) {
             mirror::Object * object = nullptr;
 
             writeQueueMutex.ExclusiveLock(self);
-            if (writeQueue.size() == 0) {
+            queueSize = writeQueue.size();
+            if (queueSize == 0) {
                 done = true;
             }
             else {
@@ -169,7 +172,8 @@ class WriteTask : public gc::HeapTask {
         }
         Locks::mutator_lock_->ReaderUnlock(self);
 
-        LOG(INFO) << "NIEL done writing objects in WriteTask; swap file has " << swapfileObjects
+        LOG(INFO) << "NIEL done writing objects in WriteTask; " << queueSize
+                  << " objects still in queue; swap file has " << swapfileObjects
                   << " objects, size " << swapfileSize;
         if (numGarbageObjects > 0 || numNullClasses > 0 || numSpacelessObjects > 0
                 || numResizedObjects > 0) {
@@ -319,7 +323,7 @@ void CompactSwapFile() {
     }
 }
 
-void UpdateAndCheck(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_) {
+void CheckAndUpdate(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_) {
     object->SetIgnoreAccessFlag();
     size_t objectSize = object->SizeOf();
     object->ClearIgnoreAccessFlag();
@@ -327,21 +331,8 @@ void UpdateAndCheck(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock
     uint32_t readCounterVal = object->GetReadCounter();
     uint32_t writeCounterVal = object->GetWriteCounter();
 
-    bool wasRead = false;
-    bool wasWritten = false;
-
-    if (readCounterVal > 0) {
-        object->ClearReadCounter();
-        wasRead = true;
-    }
-
-    if (writeCounterVal > 0) {
-        object->ClearWriteCounter();
-        wasWritten = true;
-    }
-
-    object->UpdateReadShiftRegister(wasRead);
-    object->UpdateWriteShiftRegister(wasWritten);
+    bool wasRead = (readCounterVal > 0);
+    bool wasWritten = (writeCounterVal > 0);
 
     //uint32_t rsrVal = object->GetReadShiftRegister();
     //uint32_t wsrVal = object->GetWriteShiftRegister();
@@ -356,6 +347,16 @@ void UpdateAndCheck(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock
         }
         writeQueueMutex.ExclusiveUnlock(self);
     }
+
+    if (wasRead) {
+        object->ClearReadCounter();
+    }
+    if (wasWritten) {
+        object->ClearWriteCounter();
+    }
+
+    object->UpdateReadShiftRegister(wasRead);
+    object->UpdateWriteShiftRegister(wasWritten);
 }
 
 void LockObjects() {
