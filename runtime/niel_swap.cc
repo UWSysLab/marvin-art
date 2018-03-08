@@ -100,7 +100,7 @@ class WriteTask : public gc::HeapTask {
 
             bool validObject = false;
             if (object != nullptr && objectInSpace) {
-                object->SetIgnoreAccessFlag();
+                object->SetIgnoreReadFlag();
                 if (object->GetPadding() == MAGIC_NUM) {
                     if (object->GetClass() != nullptr) {
                         validObject = true;
@@ -112,16 +112,17 @@ class WriteTask : public gc::HeapTask {
                 else {
                     numGarbageObjects++;
                 }
-                object->ClearIgnoreAccessFlag();
+                object->ClearIgnoreReadFlag();
             }
 
             if (validObject) {
-                object->SetIgnoreAccessFlag();
+                object->SetIgnoreReadFlag();
                 size_t objectSize = object->SizeOf();
-                object->ClearIgnoreAccessFlag();
+                object->ClearIgnoreReadFlag();
 
                 char * objectData = new char[objectSize];
                 LockObjects();
+                object->ClearDirtyBit();
                 std::memcpy(objectData, object, objectSize);
                 UnlockObjects();
 
@@ -324,9 +325,9 @@ void CompactSwapFile() {
 }
 
 void CheckAndUpdate(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_) {
-    object->SetIgnoreAccessFlag();
+    object->SetIgnoreReadFlag();
     size_t objectSize = object->SizeOf();
-    object->ClearIgnoreAccessFlag();
+    object->ClearIgnoreReadFlag();
 
     uint32_t readCounterVal = object->GetReadCounter();
     uint32_t writeCounterVal = object->GetWriteCounter();

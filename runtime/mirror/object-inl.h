@@ -767,9 +767,8 @@ inline void Object::SetField64Volatile(MemberOffset field_offset, int64_t new_va
 template<typename kSize, bool kIsVolatile>
 inline void Object::SetField(MemberOffset field_offset, kSize new_value) {
   niel::swap::LockObjects();
-  if (!GetIgnoreAccessFlag()) {
-    IncrWriteCounter();
-  }
+  IncrWriteCounter();
+  SetDirtyBit();
   uint8_t* raw_addr = reinterpret_cast<uint8_t*>(this) + field_offset.Int32Value();
   kSize* addr = reinterpret_cast<kSize*>(raw_addr);
   if (kIsVolatile) {
@@ -782,7 +781,7 @@ inline void Object::SetField(MemberOffset field_offset, kSize new_value) {
 
 template<typename kSize, bool kIsVolatile>
 inline kSize Object::GetField(MemberOffset field_offset) {
-  if (!GetIgnoreAccessFlag()) {
+  if (!GetIgnoreReadFlag()) {
       IncrReadCounter();
   }
   const uint8_t* raw_addr = reinterpret_cast<const uint8_t*>(this) + field_offset.Int32Value();
@@ -831,7 +830,7 @@ inline bool Object::CasFieldStrongSequentiallyConsistent64(MemberOffset field_of
 template<class T, VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrierOption,
          bool kIsVolatile>
 inline T* Object::GetFieldObject(MemberOffset field_offset) {
-  if (!GetIgnoreAccessFlag()) {
+  if (!GetIgnoreReadFlag()) {
       IncrReadCounter();
   }
   if (kVerifyFlags & kVerifyThis) {
@@ -860,9 +859,8 @@ template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVer
 inline void Object::SetFieldObjectWithoutWriteBarrier(MemberOffset field_offset,
                                                       Object* new_value) {
   niel::swap::LockObjects();
-  if (!GetIgnoreAccessFlag()) {
-    IncrWriteCounter();
-  }
+  IncrWriteCounter();
+  SetDirtyBit();
   if (kCheckTransaction) {
     DCHECK_EQ(kTransactionActive, Runtime::Current()->IsActiveTransaction());
   }
@@ -1144,7 +1142,7 @@ template <bool kVisitNativeRoots,
           typename JavaLangRefVisitor>
 inline void Object::VisitReferences(const Visitor& visitor,
                                     const JavaLangRefVisitor& ref_visitor) {
-  SetIgnoreAccessFlag();
+  SetIgnoreReadFlag();
   mirror::Class* klass = GetClass<kVerifyFlags, kReadBarrierOption>();
   visitor(this, ClassOffset(), false);
   const uint32_t class_flags = klass->GetClassFlags<kVerifyNone>();
@@ -1198,16 +1196,16 @@ inline void Object::VisitReferences(const Visitor& visitor,
       }
     }
   }
-  ClearIgnoreAccessFlag();
+  ClearIgnoreReadFlag();
 }
 
-inline bool Object::GetIgnoreAccessFlag() {
+inline bool Object::GetIgnoreReadFlag() {
   return (bool)GetBits(x_access_data_, 31, 1);
 }
-inline void Object::SetIgnoreAccessFlag() {
+inline void Object::SetIgnoreReadFlag() {
   SetBits(&x_access_data_, 31, 1);
 }
-inline void Object::ClearIgnoreAccessFlag() {
+inline void Object::ClearIgnoreReadFlag() {
   ClearBits(&x_access_data_, 31, 1);
 }
 
@@ -1225,16 +1223,16 @@ inline void Object::ClearWriteCounter() {
 }
 
 inline uint32_t Object::GetReadCounter() {
-  return GetBits(x_access_data_, 10, 13);
+  return GetBits(x_access_data_, 10, 12);
 }
 inline void Object::IncrReadCounter() {
   uint32_t oldVal = GetReadCounter();
-  if (oldVal < 8191) {
-      AssignBits(&x_access_data_, oldVal + 1, 10, 13);
+  if (oldVal < 4095) {
+      AssignBits(&x_access_data_, oldVal + 1, 10, 12);
   }
 }
 inline void Object::ClearReadCounter() {
-  ClearBits(&x_access_data_, 10, 13);
+  ClearBits(&x_access_data_, 10, 12);
 }
 
 inline uint32_t Object::GetWriteShiftRegister() {
@@ -1253,6 +1251,16 @@ inline void Object::UpdateReadShiftRegister(bool read) {
   uint32_t oldVal = GetReadShiftRegister();
   uint32_t newVal = (oldVal >> 1) | ((uint32_t)read << (4 - 1));
   AssignBits(&x_access_data_, newVal, 27, 4);
+}
+
+inline bool Object::GetDirtyBit() {
+  return (bool)GetBits(x_access_data_, 22, 1);
+}
+inline void Object::SetDirtyBit() {
+  SetBits(&x_access_data_, 22, 1);
+}
+inline void Object::ClearDirtyBit() {
+  ClearBits(&x_access_data_, 22, 1);
 }
 
 }  // namespace mirror

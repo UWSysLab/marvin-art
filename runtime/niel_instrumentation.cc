@@ -78,7 +78,7 @@ long largeObjectTotalPointerSize = 0;
 
 Histogram smallObjectPointerFracHist(10, 0, 1); // objects <=200 bytes
 Histogram largeObjectPointerFracHist(10, 0, 1); // objects >200 bytes
-Histogram readCountHist(10, 1, 8191);
+Histogram readCountHist(10, 1, 4095);
 Histogram writeCountHist(10, 1, 1023);
 Histogram readShiftRegHist(16, 0, 16);
 Histogram writeShiftRegHist(16, 0, 16);
@@ -197,10 +197,10 @@ void StartAccessCount(gc::collector::GarbageCollector * gc) {
 
 void CountAccess(gc::collector::GarbageCollector * gc ATTRIBUTE_UNUSED, mirror::Object * object) {
     if (doingAccessCount) {
-        object->SetIgnoreAccessFlag();
+        object->SetIgnoreReadFlag();
         size_t objectSize = object->SizeOf();
         mirror::Class * klass = object->GetClass();
-        object->ClearIgnoreAccessFlag();
+        object->ClearIgnoreReadFlag();
         uint32_t numPointers = klass->NumReferenceInstanceFields();
         mirror::Class * superClass = klass->GetSuperClass();
         while (superClass != nullptr) {

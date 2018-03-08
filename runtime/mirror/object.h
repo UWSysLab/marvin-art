@@ -102,18 +102,19 @@ class MANAGED LOCKABLE Object {
 
   /*
    * Current layout of x_access_data_:
-   * 3|3222|2222|2221111111111|0000000000
-   * 1|0987|6543|2109876543210|9876543210
-   * f|rsr |wsr |read counter |write counter
+   * 3|3222|2222|2|221111111111|0000000000
+   * 1|0987|6543|2|109876543210|9876543210
+   * f|rsr |wsr |d|read counter|write counter
    *
    * f: ignore access flag
    * rsr: read shift register (for Clock working set estimation)
    * wsr: write shift register (for Clock)
+   * d: dirty bit
    */
 
-  bool GetIgnoreAccessFlag();
-  void SetIgnoreAccessFlag();
-  void ClearIgnoreAccessFlag();
+  bool GetIgnoreReadFlag();
+  void SetIgnoreReadFlag();
+  void ClearIgnoreReadFlag();
 
   uint32_t GetWriteCounter();
   void IncrWriteCounter();
@@ -128,6 +129,10 @@ class MANAGED LOCKABLE Object {
 
   uint32_t GetReadShiftRegister();
   void UpdateReadShiftRegister(bool read);
+
+  bool GetDirtyBit();
+  void SetDirtyBit();
+  void ClearDirtyBit();
 
   uint32_t GetPadding() {
     return x_padding_;
