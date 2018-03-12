@@ -99,7 +99,7 @@ class MANAGED LOCKABLE Object {
     *data = *data | ((val << offset) & (0xffffffff >> (32 - width - offset)));
   }
 
-  static uint32_t GetBits8(uint8_t data, uint8_t offset, uint8_t width) {
+  static uint8_t GetBits8(uint8_t data, uint8_t offset, uint8_t width) {
     return (data >> offset) & (0xff >> (8 - width));
   }
   static void SetBits8(uint8_t * data, uint8_t offset, uint8_t width) {
