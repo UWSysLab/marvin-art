@@ -76,6 +76,9 @@ long smallObjectTotalPointerSize = 0;
 long largeObjectTotalObjectSize = 0;
 long largeObjectTotalPointerSize = 0;
 
+long coldObjectTotalSize = 0;
+long largeColdObjectTotalSize = 0;
+
 Histogram smallObjectPointerFracHist(10, 0, 1); // objects <=200 bytes
 Histogram largeObjectPointerFracHist(10, 0, 1); // objects >200 bytes
 Histogram readCountHist(10, 1, 4095);
@@ -193,6 +196,9 @@ void StartAccessCount(gc::collector::GarbageCollector * gc) {
     readShiftRegVsPointerFracHist.Clear();
     writeShiftRegVsPointerFracHist.Clear();
     objectSizeVsPointerFracHist.Clear();
+
+    coldObjectTotalSize = 0;
+    largeColdObjectTotalSize = 0;
 }
 
 void CountAccess(gc::collector::GarbageCollector * gc ATTRIBUTE_UNUSED, mirror::Object * object) {
@@ -261,6 +267,13 @@ void CountAccess(gc::collector::GarbageCollector * gc ATTRIBUTE_UNUSED, mirror::
         writeShiftRegVsPointerFracHist.Add(wsrVal, pointerSizeFrac);
         objectSizeVsPointerFracHist.Add(objectSize, pointerSizeFrac);
 
+        if (wsrVal < 2 && !wasWritten) {
+            coldObjectTotalSize += objectSize;
+            if (objectSize > 200) {
+                largeColdObjectTotalSize += objectSize;
+            }
+        }
+
         totalObjects += 1;
     }
     else {
@@ -291,6 +304,11 @@ void FinishAccessCount(gc::collector::GarbageCollector * gc) {
                   << (double)largeObjectTotalPointerSize / largeObjectTotalObjectSize
                   << " pointer size: " << largeObjectTotalPointerSize
                   << " object size: " << largeObjectTotalObjectSize;
+        LOG(INFO) << "NIEL cold object size: " << coldObjectTotalSize
+                  << " large cold object size: " << largeColdObjectTotalSize
+                  << " large object size: " << largeObjectTotalObjectSize
+                  << " total object size: "
+                  << (smallObjectTotalObjectSize + largeObjectTotalObjectSize);
         LOG(INFO) << "NIEL pointer frac hist of small objects (scaled):\n"
                   << smallObjectPointerFracHist.Print(true, true);
         LOG(INFO) << "NIEL pointer frac hist of large objects (scaled):\n"

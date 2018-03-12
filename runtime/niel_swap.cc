@@ -200,6 +200,7 @@ class WriteTask : public gc::HeapTask {
                 LOG(INFO) << "NIEL not scheduling WriteTask again due to IO error";
             }
             else {
+                curHeap->RequestConcurrentGC(self, true);
                 taskProcessor->AddTask(self, new WriteTask(targetTime));
             }
         }
@@ -336,9 +337,9 @@ void CheckAndUpdate(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock
     bool wasWritten = (writeCounterVal > 0);
 
     //uint32_t rsrVal = object->GetReadShiftRegister();
-    //uint32_t wsrVal = object->GetWriteShiftRegister();
+    uint32_t wsrVal = object->GetWriteShiftRegister();
 
-    if (objectSize > 5000) {
+    if (objectSize > 200 && wsrVal < 2 && !wasWritten && object->GetDirtyBit()) {
         Thread * self = Thread::Current();
         writeQueueMutex.ExclusiveLock(self);
         if (!writeSet.count(object)) {
