@@ -766,9 +766,6 @@ inline void Object::SetField64Volatile(MemberOffset field_offset, int64_t new_va
 
 template<typename kSize, bool kIsVolatile>
 inline void Object::SetField(MemberOffset field_offset, kSize new_value) {
-  niel::swap::LockObjects();
-  IncrWriteCounter();
-  SetDirtyBit();
   uint8_t* raw_addr = reinterpret_cast<uint8_t*>(this) + field_offset.Int32Value();
   kSize* addr = reinterpret_cast<kSize*>(raw_addr);
   if (kIsVolatile) {
@@ -776,7 +773,8 @@ inline void Object::SetField(MemberOffset field_offset, kSize new_value) {
   } else {
     reinterpret_cast<Atomic<kSize>*>(addr)->StoreJavaData(new_value);
   }
-  niel::swap::UnlockObjects();
+  IncrWriteCounter();
+  SetDirtyBit();
 }
 
 template<typename kSize, bool kIsVolatile>
@@ -858,9 +856,6 @@ template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVer
     bool kIsVolatile>
 inline void Object::SetFieldObjectWithoutWriteBarrier(MemberOffset field_offset,
                                                       Object* new_value) {
-  niel::swap::LockObjects();
-  IncrWriteCounter();
-  SetDirtyBit();
   if (kCheckTransaction) {
     DCHECK_EQ(kTransactionActive, Runtime::Current()->IsActiveTransaction());
   }
@@ -890,7 +885,8 @@ inline void Object::SetFieldObjectWithoutWriteBarrier(MemberOffset field_offset,
   } else {
     objref_addr->Assign(new_value);
   }
-  niel::swap::UnlockObjects();
+  IncrWriteCounter();
+  SetDirtyBit();
 }
 
 template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVerifyFlags,
@@ -1200,13 +1196,13 @@ inline void Object::VisitReferences(const Visitor& visitor,
 }
 
 inline bool Object::GetIgnoreReadFlag() {
-  return (bool)GetBits8(x_flags_, 1, 1);
+  return (bool)GetBitsAtomic8(x_flags_, 1, 1, std::memory_order_relaxed);
 }
 inline void Object::SetIgnoreReadFlag() {
-  SetBits8(&x_flags_, 1, 1);
+  SetBitsAtomic8(x_flags_, 1, 1, std::memory_order_relaxed);
 }
 inline void Object::ClearIgnoreReadFlag() {
-  ClearBits8(&x_flags_, 1, 1);
+  ClearBitsAtomic8(x_flags_, 1, 1, std::memory_order_relaxed);
 }
 
 inline uint8_t Object::GetWriteCounter() {
@@ -1252,13 +1248,13 @@ inline void Object::UpdateReadShiftRegister(bool read) {
 }
 
 inline bool Object::GetDirtyBit() {
-  return (bool)GetBits8(x_flags_, 0, 1);
+  return (bool)GetBitsAtomic8(x_flags_, 0, 1, std::memory_order_acquire);
 }
 inline void Object::SetDirtyBit() {
-  SetBits8(&x_flags_, 0, 1);
+  SetBitsAtomic8(x_flags_, 0, 1, std::memory_order_acq_rel);
 }
 inline void Object::ClearDirtyBit() {
-  ClearBits8(&x_flags_, 0, 1);
+  ClearBitsAtomic8(x_flags_, 0, 1, std::memory_order_acq_rel);
 }
 
 }  // namespace mirror

@@ -250,7 +250,7 @@ ArtField* Object::FindFieldByOffset(MemberOffset offset) {
 }
 
 bool Object::TestBitMethods() {
-    const int NUM_TESTS = 12;
+    const int NUM_TESTS = 15;
     uint32_t result[NUM_TESTS];
     uint32_t expected[NUM_TESTS];
 
@@ -312,6 +312,23 @@ bool Object::TestBitMethods() {
     AssignBits8(&data11, 0x1, 1, 4);
     result[11] = data11;
     expected[11] = 0xa3; // 10100011
+
+    // values from test 8 above
+    std::atomic<uint8_t> data12(0xd9);
+    result[12] = GetBitsAtomic8(data12, 2, 4, std::memory_order_seq_cst);
+    expected[12] = 6;
+
+    // values from test 9 above
+    std::atomic<uint8_t> data13(0x00);
+    SetBitsAtomic8(data13, 5, 2, std::memory_order_seq_cst);
+    result[13] = data13.load();
+    expected[13] = 0x60;
+
+    // values from test 10 above
+    std::atomic<uint8_t> data14(0xff);
+    ClearBitsAtomic8(data14, 3, 3, std::memory_order_seq_cst);
+    result[14] = data14.load();
+    expected[14] = 0xc7;
 
     for (int i = 0; i < NUM_TESTS; i++) {
         if (result[i] != expected[i]) {

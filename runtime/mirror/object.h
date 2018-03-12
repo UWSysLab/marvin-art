@@ -113,6 +113,19 @@ class MANAGED LOCKABLE Object {
     *data = *data | ((val << offset) & (0xff >> (8 - width - offset)));
   }
 
+  static uint8_t GetBitsAtomic8(const std::atomic<uint8_t> & data, uint8_t offset,
+                                uint8_t width, std::memory_order order) {
+    return (data.load(order) >> offset) & (0xff >> (8 - width));
+  }
+  static void SetBitsAtomic8(std::atomic<uint8_t> & data, uint8_t offset, uint8_t width,
+                             std::memory_order order) {
+    data.fetch_or((0xff >> (8 - width) << offset), order);
+  }
+  static void ClearBitsAtomic8(std::atomic<uint8_t> & data, uint8_t offset, uint8_t width,
+                               std::memory_order order) {
+    data.fetch_and(~((0xff >> (8 - width)) << offset), order);
+  }
+
   static bool TestBitMethods();
 
   /*
@@ -679,7 +692,7 @@ class MANAGED LOCKABLE Object {
   // Names use 'x' prefix for the same reason that the Brooks variables defined
   // below do. See the comment at line 118 in this file for info about the
   // layout of these variables.
-  uint8_t x_flags_;
+  std::atomic<uint8_t> x_flags_;
   uint8_t x_shift_regs_;
   uint8_t x_read_counter_;
   uint8_t x_write_counter_;

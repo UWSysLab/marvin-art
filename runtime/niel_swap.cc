@@ -11,7 +11,6 @@
 #include <ctime>
 #include <fstream>
 #include <map>
-#include <pthread.h>
 #include <set>
 #include <vector>
 
@@ -33,7 +32,6 @@ void validateSwapFile();
 
 /* Variables */
 Mutex writeQueueMutex("WriteQueueMutex", kLoggingLock);
-pthread_mutex_t objectLock = PTHREAD_MUTEX_INITIALIZER;
 
 // Not locked but assumed to be only touched in one thread (because all Tasks,
 // including GC, run on the same fixed thread)
@@ -121,10 +119,8 @@ class WriteTask : public gc::HeapTask {
                 object->ClearIgnoreReadFlag();
 
                 char * objectData = new char[objectSize];
-                LockObjects();
                 object->ClearDirtyBit();
                 std::memcpy(objectData, object, objectSize);
-                UnlockObjects();
 
                 if (objectOffsetMap.find(object) == objectOffsetMap.end()) {
                     std::streampos offset = swapfile.tellp();
@@ -359,14 +355,6 @@ void CheckAndUpdate(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock
 
     object->UpdateReadShiftRegister(wasRead);
     object->UpdateWriteShiftRegister(wasWritten);
-}
-
-void LockObjects() {
-    pthread_mutex_lock(&objectLock);
-}
-
-void UnlockObjects() {
-    pthread_mutex_unlock(&objectLock);
 }
 
 void validateSwapFile() {
