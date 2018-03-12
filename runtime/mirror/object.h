@@ -85,49 +85,77 @@ class MANAGED LOCKABLE Object {
     return OFFSET_OF_OBJECT_MEMBER(Object, klass_);
   }
 
-  static uint32_t GetBits(uint32_t data, uint32_t offset, uint32_t width) {
+  static uint32_t GetBits32(uint32_t data, uint32_t offset, uint32_t width) {
     return (data >> offset) & (0xffffffff >> (32 - width));
   }
-  static void SetBits(uint32_t * data, uint32_t offset, uint32_t width) {
+  static void SetBits32(uint32_t * data, uint32_t offset, uint32_t width) {
     *data = *data | ((0xffffffff >> (32 - width)) << offset);
   }
-  static void ClearBits(uint32_t * data, uint32_t offset, uint32_t width) {
+  static void ClearBits32(uint32_t * data, uint32_t offset, uint32_t width) {
     *data = *data & ~((0xffffffff >> (32 - width)) << offset);
   }
-  static void AssignBits(uint32_t * data, uint32_t val, uint32_t offset, uint32_t width) {
-    ClearBits(data, offset, width);
+  static void AssignBits32(uint32_t * data, uint32_t val, uint32_t offset, uint32_t width) {
+    ClearBits32(data, offset, width);
     *data = *data | ((val << offset) & (0xffffffff >> (32 - width - offset)));
   }
+
+  static uint32_t GetBits8(uint8_t data, uint8_t offset, uint8_t width) {
+    return (data >> offset) & (0xff >> (8 - width));
+  }
+  static void SetBits8(uint8_t * data, uint8_t offset, uint8_t width) {
+    *data = *data | ((0xff >> (8 - width)) << offset);
+  }
+  static void ClearBits8(uint8_t * data, uint8_t offset, uint8_t width) {
+    *data = *data & ~((0xff >> (8 - width)) << offset);
+  }
+  static void AssignBits8(uint8_t * data, uint8_t val, uint8_t offset, uint8_t width) {
+    ClearBits8(data, offset, width);
+    *data = *data | ((val << offset) & (0xff >> (8 - width - offset)));
+  }
+
   static bool TestBitMethods();
 
   /*
-   * Current layout of x_access_data_:
-   * 3|3222|2222|2|221111111111|0000000000
-   * 1|0987|6543|2|109876543210|9876543210
-   * f|rsr |wsr |d|read counter|write counter
+   * Current layout of added header bytes:
    *
-   * f: ignore access flag
+   * x_flags_:
+   * 765432|1|0
+   * unused|f|d
+   *
+   * x_shift_regs_:
+   * 7654|3210
+   * rsr |wsr
+   *
+   * x_read_counter_:
+   * 76543210
+   * read counter
+   *
+   * x_write_counter_:
+   * 76543210
+   * write counter
+   *
+   * f: ignore read flag
+   * d: dirty bit
    * rsr: read shift register (for Clock working set estimation)
    * wsr: write shift register (for Clock)
-   * d: dirty bit
    */
 
   bool GetIgnoreReadFlag();
   void SetIgnoreReadFlag();
   void ClearIgnoreReadFlag();
 
-  uint32_t GetWriteCounter();
+  uint8_t GetWriteCounter();
   void IncrWriteCounter();
   void ClearWriteCounter();
 
-  uint32_t GetReadCounter();
+  uint8_t GetReadCounter();
   void IncrReadCounter();
   void ClearReadCounter();
 
-  uint32_t GetWriteShiftRegister();
+  uint8_t GetWriteShiftRegister();
   void UpdateWriteShiftRegister(bool written);
 
-  uint32_t GetReadShiftRegister();
+  uint8_t GetReadShiftRegister();
   void UpdateReadShiftRegister(bool read);
 
   bool GetDirtyBit();
@@ -649,8 +677,12 @@ class MANAGED LOCKABLE Object {
   uint32_t monitor_;
 
   // Names use 'x' prefix for the same reason that the Brooks variables defined
-  // below do.
-  uint32_t x_access_data_; // See higher up in this file for info about layout.
+  // below do. See the comment at line 118 in this file for info about the
+  // layout of these variables.
+  uint8_t x_flags_;
+  uint8_t x_shift_regs_;
+  uint8_t x_read_counter_;
+  uint8_t x_write_counter_;
   uint32_t x_padding_;
 
 #ifdef USE_BROOKS_READ_BARRIER

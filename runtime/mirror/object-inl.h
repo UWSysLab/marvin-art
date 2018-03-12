@@ -1200,67 +1200,65 @@ inline void Object::VisitReferences(const Visitor& visitor,
 }
 
 inline bool Object::GetIgnoreReadFlag() {
-  return (bool)GetBits(x_access_data_, 31, 1);
+  return (bool)GetBits8(x_flags_, 1, 1);
 }
 inline void Object::SetIgnoreReadFlag() {
-  SetBits(&x_access_data_, 31, 1);
+  SetBits8(&x_flags_, 1, 1);
 }
 inline void Object::ClearIgnoreReadFlag() {
-  ClearBits(&x_access_data_, 31, 1);
+  ClearBits8(&x_flags_, 1, 1);
 }
 
-inline uint32_t Object::GetWriteCounter() {
-  return GetBits(x_access_data_, 0, 10);
+inline uint8_t Object::GetWriteCounter() {
+  return x_write_counter_;
 }
 inline void Object::IncrWriteCounter() {
-  uint32_t oldVal = GetWriteCounter();
-  if (oldVal < 1023) {
-      AssignBits(&x_access_data_, oldVal + 1, 0, 10);
+  if (x_write_counter_ < 255) {
+      x_write_counter_ += 1;
   }
 }
 inline void Object::ClearWriteCounter() {
-  ClearBits(&x_access_data_, 0, 10);
+  x_write_counter_ = 0;
 }
 
-inline uint32_t Object::GetReadCounter() {
-  return GetBits(x_access_data_, 10, 12);
+inline uint8_t Object::GetReadCounter() {
+  return x_read_counter_;
 }
 inline void Object::IncrReadCounter() {
-  uint32_t oldVal = GetReadCounter();
-  if (oldVal < 4095) {
-      AssignBits(&x_access_data_, oldVal + 1, 10, 12);
+  if (x_read_counter_ < 255) {
+    x_read_counter_ += 1;
   }
 }
 inline void Object::ClearReadCounter() {
-  ClearBits(&x_access_data_, 10, 12);
+  x_read_counter_ = 0;
 }
 
-inline uint32_t Object::GetWriteShiftRegister() {
-  return GetBits(x_access_data_, 23, 4);
+inline uint8_t Object::GetWriteShiftRegister() {
+  return GetBits8(x_shift_regs_, 0, 4);
 }
 inline void Object::UpdateWriteShiftRegister(bool written) {
-  uint32_t oldVal = GetWriteShiftRegister();
-  uint32_t newVal = (oldVal >> 1) | ((uint32_t)written << (4 - 1));
-  AssignBits(&x_access_data_, newVal, 23, 4);
+  uint8_t oldVal = GetWriteShiftRegister();
+  uint8_t newVal = (oldVal >> 1) | ((uint8_t)written << (4 - 1));
+  AssignBits8(&x_shift_regs_, newVal, 0, 4);
 }
 
-inline uint32_t Object::GetReadShiftRegister() {
-  return GetBits(x_access_data_, 27, 4);
+inline uint8_t Object::GetReadShiftRegister() {
+  return GetBits8(x_shift_regs_, 4, 4);
 }
 inline void Object::UpdateReadShiftRegister(bool read) {
-  uint32_t oldVal = GetReadShiftRegister();
-  uint32_t newVal = (oldVal >> 1) | ((uint32_t)read << (4 - 1));
-  AssignBits(&x_access_data_, newVal, 27, 4);
+  uint8_t oldVal = GetReadShiftRegister();
+  uint8_t newVal = (oldVal >> 1) | ((uint8_t)read << (4 - 1));
+  AssignBits8(&x_shift_regs_, newVal, 4, 4);
 }
 
 inline bool Object::GetDirtyBit() {
-  return (bool)GetBits(x_access_data_, 22, 1);
+  return (bool)GetBits8(x_flags_, 0, 1);
 }
 inline void Object::SetDirtyBit() {
-  SetBits(&x_access_data_, 22, 1);
+  SetBits8(&x_flags_, 0, 1);
 }
 inline void Object::ClearDirtyBit() {
-  ClearBits(&x_access_data_, 22, 1);
+  ClearBits8(&x_flags_, 0, 1);
 }
 
 }  // namespace mirror

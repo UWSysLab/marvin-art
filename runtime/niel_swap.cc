@@ -330,14 +330,14 @@ void CheckAndUpdate(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock
     size_t objectSize = object->SizeOf();
     object->ClearIgnoreReadFlag();
 
-    uint32_t readCounterVal = object->GetReadCounter();
-    uint32_t writeCounterVal = object->GetWriteCounter();
+    uint8_t readCounterVal = object->GetReadCounter();
+    uint8_t writeCounterVal = object->GetWriteCounter();
 
     bool wasRead = (readCounterVal > 0);
     bool wasWritten = (writeCounterVal > 0);
 
-    //uint32_t rsrVal = object->GetReadShiftRegister();
-    uint32_t wsrVal = object->GetWriteShiftRegister();
+    //uint8_t rsrVal = object->GetReadShiftRegister();
+    uint8_t wsrVal = object->GetWriteShiftRegister();
 
     if (objectSize > 200 && wsrVal < 2 && !wasWritten && object->GetDirtyBit()) {
         Thread * self = Thread::Current();

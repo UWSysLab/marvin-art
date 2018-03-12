@@ -250,49 +250,68 @@ ArtField* Object::FindFieldByOffset(MemberOffset offset) {
 }
 
 bool Object::TestBitMethods() {
-    const int NUM_TESTS = 8;
+    const int NUM_TESTS = 12;
     uint32_t result[NUM_TESTS];
     uint32_t expected[NUM_TESTS];
 
     bool passed = true;
 
     uint32_t data0 = 0xabcdef12;
-    result[0] = GetBits(data0, 4, 12);
+    result[0] = GetBits32(data0, 4, 12);
     expected[0] = 0xef1;
 
     uint32_t data1 = 0xffffffff;
-    result[1] = GetBits(data1, 17, 7);
+    result[1] = GetBits32(data1, 17, 7);
     expected[1] = 0x7f;
 
     uint32_t data2 = 0x00000000;
-    SetBits(&data2, 4, 12);
+    SetBits32(&data2, 4, 12);
     result[2] = data2;
     expected[2] = 0x0000fff0;
 
     uint32_t data3 = 0x00000000;
-    SetBits(&data3, 17, 7);
+    SetBits32(&data3, 17, 7);
     result[3] = data3;
     expected[3] = 0x00fe0000;
 
     uint32_t data4 = 0xffffffff;
-    ClearBits(&data4, 4, 12);
+    ClearBits32(&data4, 4, 12);
     result[4] = data4;
     expected[4] = 0xffff000f;
 
     uint32_t data5 = 0xffffffff;
-    ClearBits(&data5, 17, 7);
+    ClearBits32(&data5, 17, 7);
     result[5] = data5;
     expected[5] = 0xff01ffff;
 
     uint32_t data6 = 0xabcdef12;
-    AssignBits(&data6, 0x88888, 4, 12);
+    AssignBits32(&data6, 0x88888, 4, 12);
     result[6] = data6;
     expected[6] = 0xabcd8882;
 
     uint32_t data7 = 0xffffffff;
-    AssignBits(&data7, 0xe, 16, 8);
+    AssignBits32(&data7, 0xe, 16, 8);
     result[7] = data7;
     expected[7] = 0xff0effff;
+
+    uint8_t data8 = 0xd9; // 11011001
+    result[8] = GetBits8(data8, 2, 4);
+    expected[8] = 6; // 0110
+
+    uint8_t data9 = 0x00;
+    SetBits8(&data9, 5, 2);
+    result[9] = data9;
+    expected[9] = 0x60; // 01100000
+
+    uint8_t data10 = 0xff;
+    ClearBits8(&data10, 3, 3);
+    result[10] = data10;
+    expected[10] = 0xc7; // 11000111
+
+    uint8_t data11 = 0xbb; // 10111011
+    AssignBits8(&data11, 0x1, 1, 4);
+    result[11] = data11;
+    expected[11] = 0xa3; // 10100011
 
     for (int i = 0; i < NUM_TESTS; i++) {
         if (result[i] != expected[i]) {

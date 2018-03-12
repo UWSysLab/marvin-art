@@ -81,8 +81,8 @@ long largeColdObjectTotalSize = 0;
 
 Histogram smallObjectPointerFracHist(10, 0, 1); // objects <=200 bytes
 Histogram largeObjectPointerFracHist(10, 0, 1); // objects >200 bytes
-Histogram readCountHist(10, 1, 4095);
-Histogram writeCountHist(10, 1, 1023);
+Histogram readCountHist(10, 1, 255);
+Histogram writeCountHist(10, 1, 255);
 Histogram readShiftRegHist(16, 0, 16);
 Histogram writeShiftRegHist(16, 0, 16);
 
@@ -227,8 +227,8 @@ void CountAccess(gc::collector::GarbageCollector * gc ATTRIBUTE_UNUSED, mirror::
             smallObjectTotalObjectSize += objectSize;
         }
 
-        uint32_t readCounterVal = object->GetReadCounter();
-        uint32_t writeCounterVal = object->GetWriteCounter();
+        uint8_t readCounterVal = object->GetReadCounter();
+        uint8_t writeCounterVal = object->GetWriteCounter();
 
         bool wasRead = false;
         bool wasWritten = false;
@@ -253,8 +253,8 @@ void CountAccess(gc::collector::GarbageCollector * gc ATTRIBUTE_UNUSED, mirror::
             objectsReadAndWritten += 1;
         }
 
-        uint32_t rsrVal = object->GetReadShiftRegister();
-        uint32_t wsrVal = object->GetWriteShiftRegister();
+        uint8_t rsrVal = object->GetReadShiftRegister();
+        uint8_t wsrVal = object->GetWriteShiftRegister();
 
         readCountHist.Add(readCounterVal);
         writeCountHist.Add(writeCounterVal);
