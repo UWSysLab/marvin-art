@@ -225,29 +225,48 @@ void GcRecordFree(Thread * self, mirror::Object * object) {
 
 void InitIfNecessary() {
     uint32_t curPid = getpid();
-    if (curPid != pid) {
-        pid = curPid;
-        std::string swapfilePath("/data/data/" + getPackageName() + "/swapfile");
-        openFile(swapfilePath, swapfile);
-        objectOffsetMap.clear();
-        objectSizeMap.clear();
-        writeQueue.clear();
-        writeSet.clear();
-
-        swapfile.write((char *)&pid, 4);
-        swapfile.flush();
-        bool ioError = checkStreamError(swapfile, "after opening swapfile");
-
-        gc::Heap * heap = Runtime::Current()->GetHeap();
-        if (heap->GetTaskProcessor() != nullptr && heap->GetTaskProcessor()->IsRunning()) {
-            if (ioError) {
-                LOG(INFO) << "NIEL not scheduling first WriteTask due to IO error";
-            }
-            else {
-                heap->GetTaskProcessor()->AddTask(Thread::Current(), new WriteTask(NanoTime()));
-            }
-        }
+    if (curPid == pid) {
+        return;
     }
+
+    gc::Heap * heap = Runtime::Current()->GetHeap();
+    if (heap == nullptr) {
+        LOG(ERROR) << "NIEL not initializing swap right now due to null heap";
+        return;
+    }
+
+    // Once we reach this point, we will not try to init swap again
+    // until the next time the PID changes
+
+    pid = curPid;
+    objectOffsetMap.clear();
+    objectSizeMap.clear();
+    writeQueue.clear();
+    writeSet.clear();
+
+    std::string packageName = getPackageName();
+    std::string swapfilePath("/data/data/" + packageName + "/swapfile");
+    openFile(swapfilePath, swapfile);
+    swapfile.write((char *)&pid, 4);
+    swapfile.flush();
+
+    bool ioError = checkStreamError(swapfile, "after opening swapfile");
+    if (ioError) {
+        LOG(ERROR) << "NIEL not scheduling first WriteTask due to IO error (package name "
+                  << packageName << ")";
+        return;
+    }
+
+    gc::TaskProcessor * taskProcessor = heap->GetTaskProcessor();
+    if (taskProcessor == nullptr || !taskProcessor->IsRunning()) {
+        LOG(ERROR) << "NIEL not scheduling first WriteTask since heap's TaskProcessor"
+                   << " is not ready";
+        return;
+    }
+
+    taskProcessor->AddTask(Thread::Current(), new WriteTask(NanoTime()));
+
+    LOG(INFO) << "NIEL successfully initialized swap for package " << packageName;
 }
 
 void CompactSwapFile() {
