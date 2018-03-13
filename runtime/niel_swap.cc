@@ -29,6 +29,8 @@ std::string getPackageName();
 void openFile(const std::string & path, std::fstream & stream);
 bool checkStreamError(const std::ios & stream, const std::string & msg);
 void validateSwapFile();
+gc::Heap * getHeapChecked();
+gc::TaskProcessor * getTaskProcessorChecked();
 
 /* Variables */
 Mutex writeQueueMutex("WriteQueueMutex", kLoggingLock);
@@ -187,10 +189,8 @@ class WriteTask : public gc::HeapTask {
 
         uint64_t nanoTime = NanoTime();
         uint64_t targetTime = nanoTime + 3000000000;
-        Runtime * runtime = Runtime::Current();
-        gc::Heap * curHeap = (runtime == nullptr ? nullptr : runtime->GetHeap());
-        gc::TaskProcessor * taskProcessor =
-            (curHeap == nullptr ? nullptr : curHeap->GetTaskProcessor());
+        gc::Heap * curHeap = getHeapChecked();
+        gc::TaskProcessor * taskProcessor = getTaskProcessorChecked();
         if (taskProcessor != nullptr && taskProcessor->IsRunning()) {
             if (ioError) {
                 LOG(INFO) << "NIEL not scheduling WriteTask again due to IO error";
@@ -202,6 +202,22 @@ class WriteTask : public gc::HeapTask {
         }
     }
 };
+
+gc::Heap * getHeapChecked() {
+    Runtime * runtime = Runtime::Current();
+    if (runtime == nullptr) {
+        return nullptr;
+    }
+    return runtime->GetHeap();
+}
+
+gc::TaskProcessor * getTaskProcessorChecked() {
+    gc::Heap * heap = getHeapChecked();
+    if (heap == nullptr) {
+        return nullptr;
+    }
+    return heap->GetTaskProcessor();
+}
 
 void GcRecordFree(Thread * self, mirror::Object * object) {
     writeQueueMutex.ExclusiveLock(self);
@@ -229,9 +245,10 @@ void InitIfNecessary() {
         return;
     }
 
-    gc::Heap * heap = Runtime::Current()->GetHeap();
-    if (heap == nullptr) {
-        LOG(ERROR) << "NIEL not initializing swap right now due to null heap";
+    gc::TaskProcessor * taskProcessor = getTaskProcessorChecked();
+    if (taskProcessor == nullptr || !taskProcessor->IsRunning()) {
+        LOG(ERROR) << "NIEL failed to init swap since heap's TaskProcessor is null or not ready"
+                   << " (or heap is null)";
         return;
     }
 
@@ -254,13 +271,6 @@ void InitIfNecessary() {
     if (ioError) {
         LOG(ERROR) << "NIEL not scheduling first WriteTask due to IO error (package name "
                   << packageName << ")";
-        return;
-    }
-
-    gc::TaskProcessor * taskProcessor = heap->GetTaskProcessor();
-    if (taskProcessor == nullptr || !taskProcessor->IsRunning()) {
-        LOG(ERROR) << "NIEL not scheduling first WriteTask since heap's TaskProcessor"
-                   << " is not ready";
         return;
     }
 
