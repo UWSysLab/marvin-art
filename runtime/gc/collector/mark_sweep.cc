@@ -1431,7 +1431,7 @@ void MarkSweep::ProcessMarkStack(bool paused) {
       DCHECK(obj != nullptr);
       ScanObject(obj);
       niel::inst::CountAccess(this, obj);
-      niel::swap::CheckAndUpdate(obj);
+      niel::swap::CheckAndUpdate(this, obj);
     }
   }
 }

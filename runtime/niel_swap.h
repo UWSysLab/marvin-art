@@ -5,6 +5,12 @@
 
 namespace art {
 
+namespace gc {
+    namespace collector {
+        class GarbageCollector;
+    }
+}
+
 namespace mirror {
     class Object;
 }
@@ -27,7 +33,8 @@ void CompactSwapFile();
  * Check if an object should be written to disk and then update its bookeeping
  * state.
  */
-void CheckAndUpdate(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_);
+void CheckAndUpdate(gc::collector::GarbageCollector * gc, mirror::Object * object)
+    SHARED_REQUIRES(Locks::mutator_lock_);
 
 } // namespace swap
 } // namespace niel

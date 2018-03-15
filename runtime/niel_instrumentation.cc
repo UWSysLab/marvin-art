@@ -159,7 +159,11 @@ void RecordFree(Thread * self, gc::space::Space * space, size_t size, int count)
     instMutex.ExclusiveUnlock(self);
 }
 
-void StartAccessCount(gc::collector::GarbageCollector * gc ATTRIBUTE_UNUSED) {
+void StartAccessCount(gc::collector::GarbageCollector * gc) {
+    if (!strstr(gc->GetName(), "partial concurrent mark sweep")) {
+        return;
+    }
+
     objectsRead = 0;
     objectsWritten = 0;
     objectsReadAndWritten = 0;
@@ -192,7 +196,11 @@ void StartAccessCount(gc::collector::GarbageCollector * gc ATTRIBUTE_UNUSED) {
     largeColdObjectTotalSize = 0;
 }
 
-void CountAccess(gc::collector::GarbageCollector * gc ATTRIBUTE_UNUSED, mirror::Object * object) {
+void CountAccess(gc::collector::GarbageCollector * gc, mirror::Object * object) {
+    if (!strstr(gc->GetName(), "partial concurrent mark sweep")) {
+        return;
+    }
+
     object->SetIgnoreReadFlag();
     size_t objectSize = object->SizeOf();
     mirror::Class * klass = object->GetClass();
@@ -268,51 +276,53 @@ void CountAccess(gc::collector::GarbageCollector * gc ATTRIBUTE_UNUSED, mirror::
 }
 
 void FinishAccessCount(gc::collector::GarbageCollector * gc) {
-    if (strstr(gc->GetName(), "partial concurrent mark sweep")) {
-        LOG(INFO) << "NIEL (GC " << gc->GetName() << "): objects read: " << objectsRead
-                  << " objects written: " << objectsWritten << " objects read and written: "
-                  << objectsReadAndWritten << " total objects: " << totalObjects
-                  << " shenanigans: " << shenanigansCount;
-        LOG(INFO) << "NIEL total pointer frac of read objects: "
-                  << (double)readTotalPointerSize / readTotalObjectSize
-                  << " pointer size: " << readTotalPointerSize
-                  << " object size: " << readTotalObjectSize;
-        LOG(INFO) << "NIEL unread total pointer frac: "
-                  << (double)unreadTotalPointerSize / unreadTotalObjectSize
-                  << " pointer size: " << unreadTotalPointerSize
-                  << " object size: " << unreadTotalObjectSize;
-        LOG(INFO) << "NIEL small total pointer frac: "
-                  << (double)smallObjectTotalPointerSize / smallObjectTotalObjectSize
-                  << " pointer size: " << smallObjectTotalPointerSize
-                  << " object size: " << smallObjectTotalObjectSize;
-        LOG(INFO) << "NIEL large total pointer frac: "
-                  << (double)largeObjectTotalPointerSize / largeObjectTotalObjectSize
-                  << " pointer size: " << largeObjectTotalPointerSize
-                  << " object size: " << largeObjectTotalObjectSize;
-        LOG(INFO) << "NIEL cold object size: " << coldObjectTotalSize
-                  << " large cold object size: " << largeColdObjectTotalSize
-                  << " large object size: " << largeObjectTotalObjectSize
-                  << " total object size: "
-                  << (smallObjectTotalObjectSize + largeObjectTotalObjectSize);
-        LOG(INFO) << "NIEL pointer frac hist of small objects (scaled):\n"
-                  << smallObjectPointerFracHist.Print(true, true);
-        LOG(INFO) << "NIEL pointer frac hist of large objects (scaled):\n"
-                  << largeObjectPointerFracHist.Print(true, true);
-        LOG(INFO) << "NIEL read count hist:\n" << readCountHist.Print(false, true);
-        LOG(INFO) << "NIEL write count hist:\n" << writeCountHist.Print(false, true);
-        LOG(INFO) << "NIEL read shift register hist:\n" << readShiftRegHist.Print(false, true);
-        LOG(INFO) << "NIEL write shift register hist:\n" << writeShiftRegHist.Print(false, true);
-        LOG(INFO) << "NIEL read count vs pointer frac hist:\n"
-                  << readsVsPointerFracHist.Print(false);
-        LOG(INFO) << "NIEL write count vs pointer frac hist:\n"
-                  << writesVsPointerFracHist.Print(false);
-        LOG(INFO) << "NIEL read shift reg vs pointer frac hist:\n"
-                  << readShiftRegVsPointerFracHist.Print(false);
-        LOG(INFO) << "NIEL write shift reg vs pointer frac hist:\n"
-                  << writeShiftRegVsPointerFracHist.Print(false);
-        LOG(INFO) << "NIEL object size vs pointer frac hist:\n"
-                  << objectSizeVsPointerFracHist.Print(false);
+    if (!strstr(gc->GetName(), "partial concurrent mark sweep")) {
+        return;
     }
+
+    LOG(INFO) << "NIEL (GC " << gc->GetName() << "): objects read: " << objectsRead
+              << " objects written: " << objectsWritten << " objects read and written: "
+              << objectsReadAndWritten << " total objects: " << totalObjects
+              << " shenanigans: " << shenanigansCount;
+    LOG(INFO) << "NIEL total pointer frac of read objects: "
+              << (double)readTotalPointerSize / readTotalObjectSize
+              << " pointer size: " << readTotalPointerSize
+              << " object size: " << readTotalObjectSize;
+    LOG(INFO) << "NIEL unread total pointer frac: "
+              << (double)unreadTotalPointerSize / unreadTotalObjectSize
+              << " pointer size: " << unreadTotalPointerSize
+              << " object size: " << unreadTotalObjectSize;
+    LOG(INFO) << "NIEL small total pointer frac: "
+              << (double)smallObjectTotalPointerSize / smallObjectTotalObjectSize
+              << " pointer size: " << smallObjectTotalPointerSize
+              << " object size: " << smallObjectTotalObjectSize;
+    LOG(INFO) << "NIEL large total pointer frac: "
+              << (double)largeObjectTotalPointerSize / largeObjectTotalObjectSize
+              << " pointer size: " << largeObjectTotalPointerSize
+              << " object size: " << largeObjectTotalObjectSize;
+    LOG(INFO) << "NIEL cold object size: " << coldObjectTotalSize
+              << " large cold object size: " << largeColdObjectTotalSize
+              << " large object size: " << largeObjectTotalObjectSize
+              << " total object size: "
+              << (smallObjectTotalObjectSize + largeObjectTotalObjectSize);
+    LOG(INFO) << "NIEL pointer frac hist of small objects (scaled):\n"
+              << smallObjectPointerFracHist.Print(true, true);
+    LOG(INFO) << "NIEL pointer frac hist of large objects (scaled):\n"
+              << largeObjectPointerFracHist.Print(true, true);
+    LOG(INFO) << "NIEL read count hist:\n" << readCountHist.Print(false, true);
+    LOG(INFO) << "NIEL write count hist:\n" << writeCountHist.Print(false, true);
+    LOG(INFO) << "NIEL read shift register hist:\n" << readShiftRegHist.Print(false, true);
+    LOG(INFO) << "NIEL write shift register hist:\n" << writeShiftRegHist.Print(false, true);
+    LOG(INFO) << "NIEL read count vs pointer frac hist:\n"
+              << readsVsPointerFracHist.Print(false);
+    LOG(INFO) << "NIEL write count vs pointer frac hist:\n"
+              << writesVsPointerFracHist.Print(false);
+    LOG(INFO) << "NIEL read shift reg vs pointer frac hist:\n"
+              << readShiftRegVsPointerFracHist.Print(false);
+    LOG(INFO) << "NIEL write shift reg vs pointer frac hist:\n"
+              << writeShiftRegVsPointerFracHist.Print(false);
+    LOG(INFO) << "NIEL object size vs pointer frac hist:\n"
+              << objectSizeVsPointerFracHist.Print(false);
 }
 
 void maybePrintLog() {

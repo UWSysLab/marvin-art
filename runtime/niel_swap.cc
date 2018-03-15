@@ -1,5 +1,6 @@
 #include "niel_swap.h"
 
+#include "gc/collector/garbage_collector.h"
 #include "gc/heap.h"
 #include "gc/task_processor.h"
 #include "mirror/object.h"
@@ -350,7 +351,11 @@ void CompactSwapFile() {
     }
 }
 
-void CheckAndUpdate(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_) {
+void CheckAndUpdate(gc::collector::GarbageCollector * gc, mirror::Object * object) {
+    if (!strstr(gc->GetName(), "partial concurrent mark sweep")) {
+        return;
+    }
+
     object->SetIgnoreReadFlag();
     size_t objectSize = object->SizeOf();
     object->ClearIgnoreReadFlag();
