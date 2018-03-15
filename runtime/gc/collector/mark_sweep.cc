@@ -145,6 +145,8 @@ void MarkSweep::InitializePhase() {
 
 void MarkSweep::RunPhases() {
   LOG(INFO) << "NIEL running MarkSweep GC with name " << GetName();
+  niel::swap::InitIfNecessary();
+  niel::inst::StartAccessCount(this);
   Thread* self = Thread::Current();
   InitializePhase();
   Locks::mutator_lock_->AssertNotHeld(self);
@@ -173,6 +175,7 @@ void MarkSweep::RunPhases() {
   }
   GetHeap()->PostGcVerification(this);
   FinishPhase();
+  niel::inst::FinishAccessCount(this);
 }
 
 void MarkSweep::ProcessReferences(Thread* self) {
@@ -256,8 +259,6 @@ void MarkSweep::RevokeAllThreadLocalAllocationStacks(Thread* self) {
 }
 
 void MarkSweep::MarkingPhase() {
-  niel::swap::InitIfNecessary();
-  niel::inst::StartAccessCount(this);
   TimingLogger::ScopedTiming t(__FUNCTION__, GetTimings());
   Thread* self = Thread::Current();
   BindBitmaps();
@@ -270,7 +271,6 @@ void MarkSweep::MarkingPhase() {
   MarkReachableObjects();
   // Pre-clean dirtied cards to reduce pauses.
   PreCleanCards();
-  niel::inst::FinishAccessCount(this);
 }
 
 class MarkSweep::ScanObjectVisitor {

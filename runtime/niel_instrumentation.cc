@@ -58,13 +58,10 @@ std::map<std::string, int> totalAllocCounts;
 std::map<std::string, int> totalAllocSizes;
 /*     End locked with instMutex */
 
-bool doingAccessCount = false;
-
 long objectsRead = 0;
 long objectsWritten = 0;
 long objectsReadAndWritten = 0;
 long totalObjects = 0;
-long errorCount = 0;
 long shenanigansCount = 0; // used for misc debugging
 
 long readTotalObjectSize = 0;
@@ -162,17 +159,11 @@ void RecordFree(Thread * self, gc::space::Space * space, size_t size, int count)
     instMutex.ExclusiveUnlock(self);
 }
 
-void StartAccessCount(gc::collector::GarbageCollector * gc) {
-    if (errorCount > 0) {
-        LOG(INFO) << "NIEL (GC " << gc->GetName() << "): error count " << errorCount << " on prev GC";
-    }
-    doingAccessCount = true;
-
+void StartAccessCount(gc::collector::GarbageCollector * gc ATTRIBUTE_UNUSED) {
     objectsRead = 0;
     objectsWritten = 0;
     objectsReadAndWritten = 0;
     totalObjects = 0;
-    errorCount = 0;
     shenanigansCount = 0;
 
     readTotalObjectSize = 0;
@@ -202,87 +193,81 @@ void StartAccessCount(gc::collector::GarbageCollector * gc) {
 }
 
 void CountAccess(gc::collector::GarbageCollector * gc ATTRIBUTE_UNUSED, mirror::Object * object) {
-    if (doingAccessCount) {
-        object->SetIgnoreReadFlag();
-        size_t objectSize = object->SizeOf();
-        mirror::Class * klass = object->GetClass();
-        object->ClearIgnoreReadFlag();
-        uint32_t numPointers = klass->NumReferenceInstanceFields();
-        mirror::Class * superClass = klass->GetSuperClass();
-        while (superClass != nullptr) {
-            numPointers += superClass->NumReferenceInstanceFields();
-            superClass = superClass->GetSuperClass();
-        }
-        size_t sizeOfPointers = numPointers * sizeof(mirror::HeapReference<mirror::Object>);
-        double pointerSizeFrac = ((double)sizeOfPointers) / objectSize;
+    object->SetIgnoreReadFlag();
+    size_t objectSize = object->SizeOf();
+    mirror::Class * klass = object->GetClass();
+    object->ClearIgnoreReadFlag();
+    uint32_t numPointers = klass->NumReferenceInstanceFields();
+    mirror::Class * superClass = klass->GetSuperClass();
+    while (superClass != nullptr) {
+        numPointers += superClass->NumReferenceInstanceFields();
+        superClass = superClass->GetSuperClass();
+    }
+    size_t sizeOfPointers = numPointers * sizeof(mirror::HeapReference<mirror::Object>);
+    double pointerSizeFrac = ((double)sizeOfPointers) / objectSize;
 
-        if (objectSize > 200) {
-            largeObjectPointerFracHist.Add(pointerSizeFrac);
-            largeObjectTotalPointerSize += sizeOfPointers;
-            largeObjectTotalObjectSize += objectSize;
-        }
-        else {
-            smallObjectPointerFracHist.Add(pointerSizeFrac);
-            smallObjectTotalPointerSize += sizeOfPointers;
-            smallObjectTotalObjectSize += objectSize;
-        }
-
-        uint8_t readCounterVal = object->GetReadCounter();
-        uint8_t writeCounterVal = object->GetWriteCounter();
-
-        bool wasRead = false;
-        bool wasWritten = false;
-
-        if (readCounterVal > 0) {
-            objectsRead += 1;
-            wasRead = true;
-            readTotalPointerSize += sizeOfPointers;
-            readTotalObjectSize += objectSize;
-        }
-        else {
-            unreadTotalPointerSize += sizeOfPointers;
-            unreadTotalObjectSize += objectSize;
-        }
-
-        if (writeCounterVal > 0) {
-            objectsWritten += 1;
-            wasWritten = true;
-        }
-
-        if (wasRead && wasWritten) {
-            objectsReadAndWritten += 1;
-        }
-
-        uint8_t rsrVal = object->GetReadShiftRegister();
-        uint8_t wsrVal = object->GetWriteShiftRegister();
-
-        readCountHist.Add(readCounterVal);
-        writeCountHist.Add(writeCounterVal);
-        readShiftRegHist.Add(rsrVal);
-        writeShiftRegHist.Add(wsrVal);
-
-        readsVsPointerFracHist.Add(readCounterVal, pointerSizeFrac);
-        writesVsPointerFracHist.Add(readCounterVal, pointerSizeFrac);
-        readShiftRegVsPointerFracHist.Add(rsrVal, pointerSizeFrac);
-        writeShiftRegVsPointerFracHist.Add(wsrVal, pointerSizeFrac);
-        objectSizeVsPointerFracHist.Add(objectSize, pointerSizeFrac);
-
-        if (wsrVal < 2 && !wasWritten) {
-            coldObjectTotalSize += objectSize;
-            if (objectSize > 200) {
-                largeColdObjectTotalSize += objectSize;
-            }
-        }
-
-        totalObjects += 1;
+    if (objectSize > 200) {
+        largeObjectPointerFracHist.Add(pointerSizeFrac);
+        largeObjectTotalPointerSize += sizeOfPointers;
+        largeObjectTotalObjectSize += objectSize;
     }
     else {
-        errorCount += 1;
+        smallObjectPointerFracHist.Add(pointerSizeFrac);
+        smallObjectTotalPointerSize += sizeOfPointers;
+        smallObjectTotalObjectSize += objectSize;
     }
+
+    uint8_t readCounterVal = object->GetReadCounter();
+    uint8_t writeCounterVal = object->GetWriteCounter();
+
+    bool wasRead = false;
+    bool wasWritten = false;
+
+    if (readCounterVal > 0) {
+        objectsRead += 1;
+        wasRead = true;
+        readTotalPointerSize += sizeOfPointers;
+        readTotalObjectSize += objectSize;
+    }
+    else {
+        unreadTotalPointerSize += sizeOfPointers;
+        unreadTotalObjectSize += objectSize;
+    }
+
+    if (writeCounterVal > 0) {
+        objectsWritten += 1;
+        wasWritten = true;
+    }
+
+    if (wasRead && wasWritten) {
+        objectsReadAndWritten += 1;
+    }
+
+    uint8_t rsrVal = object->GetReadShiftRegister();
+    uint8_t wsrVal = object->GetWriteShiftRegister();
+
+    readCountHist.Add(readCounterVal);
+    writeCountHist.Add(writeCounterVal);
+    readShiftRegHist.Add(rsrVal);
+    writeShiftRegHist.Add(wsrVal);
+
+    readsVsPointerFracHist.Add(readCounterVal, pointerSizeFrac);
+    writesVsPointerFracHist.Add(readCounterVal, pointerSizeFrac);
+    readShiftRegVsPointerFracHist.Add(rsrVal, pointerSizeFrac);
+    writeShiftRegVsPointerFracHist.Add(wsrVal, pointerSizeFrac);
+    objectSizeVsPointerFracHist.Add(objectSize, pointerSizeFrac);
+
+    if (wsrVal < 2 && !wasWritten) {
+        coldObjectTotalSize += objectSize;
+        if (objectSize > 200) {
+            largeColdObjectTotalSize += objectSize;
+        }
+    }
+
+    totalObjects += 1;
 }
 
 void FinishAccessCount(gc::collector::GarbageCollector * gc) {
-    doingAccessCount = false;
     if (strstr(gc->GetName(), "partial concurrent mark sweep")) {
         LOG(INFO) << "NIEL (GC " << gc->GetName() << "): objects read: " << objectsRead
                   << " objects written: " << objectsWritten << " objects read and written: "
