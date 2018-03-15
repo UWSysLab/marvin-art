@@ -192,6 +192,7 @@ void LargeObjectMapSpace::SetAllLargeObjectsAsZygoteObjects(Thread* self) {
 }
 
 size_t LargeObjectMapSpace::Free(Thread* self, mirror::Object* ptr) {
+  niel::swap::GcRecordFree(self, ptr);
   MutexLock mu(self, lock_);
   auto it = large_objects_.find(ptr);
   if (UNLIKELY(it == large_objects_.end())) {
@@ -208,7 +209,6 @@ size_t LargeObjectMapSpace::Free(Thread* self, mirror::Object* ptr) {
   delete mem_map;
   large_objects_.erase(it);
   niel::inst::RecordFree(self, this, allocation_size, 1);
-  niel::swap::GcRecordFree(self, ptr);
   return allocation_size;
 }
 
@@ -413,6 +413,7 @@ void FreeListSpace::RemoveFreePrev(AllocationInfo* info) {
 }
 
 size_t FreeListSpace::Free(Thread* self, mirror::Object* obj) {
+  niel::swap::GcRecordFree(self, obj);
   MutexLock mu(self, lock_);
   DCHECK(Contains(obj)) << reinterpret_cast<void*>(Begin()) << " " << obj << " "
                         << reinterpret_cast<void*>(End());
@@ -469,7 +470,6 @@ size_t FreeListSpace::Free(Thread* self, mirror::Object* obj) {
     mprotect(obj, allocation_size, PROT_READ);
   }
   niel::inst::RecordFree(self, this, allocation_size, 1);
-  niel::swap::GcRecordFree(self, obj);
   return allocation_size;
 }
 

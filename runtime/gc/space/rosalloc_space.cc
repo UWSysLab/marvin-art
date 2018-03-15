@@ -205,6 +205,10 @@ size_t RosAllocSpace::Free(Thread* self, mirror::Object* ptr) {
 size_t RosAllocSpace::FreeList(Thread* self, size_t num_ptrs, mirror::Object** ptrs) {
   DCHECK(ptrs != nullptr);
 
+  for (size_t i = 0; i < num_ptrs; i++) {
+    niel::swap::GcRecordFree(self, ptrs[i]);
+  }
+
   size_t verify_bytes = 0;
   for (size_t i = 0; i < num_ptrs; i++) {
     if (kPrefetchDuringRosAllocFreeList && i + kPrefetchLookAhead < num_ptrs) {
@@ -241,9 +245,6 @@ size_t RosAllocSpace::FreeList(Thread* self, size_t num_ptrs, mirror::Object** p
     CHECK_EQ(verify_bytes, bytes_freed);
   }
   niel::inst::RecordFree(self, this, bytes_freed, num_ptrs);
-  for (size_t i = 0; i < num_ptrs; i++) {
-    niel::swap::GcRecordFree(self, ptrs[i]);
-  }
   return bytes_freed;
 }
 
