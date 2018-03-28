@@ -13,6 +13,11 @@ inline size_t Stub::GetStubSize(int numRefs) {
     return sizeof(Stub) + numRefs * sizeof(mirror::HeapReference<mirror::Object>);
 }
 
+inline size_t Stub::GetStubSize(mirror::Object * object) {
+    int numRefs = CountReferences(object);
+    return GetStubSize(numRefs);
+}
+
 inline mirror::HeapReference<mirror::Object> * Stub::GetReferenceAddress(int pos) {
     char * refBytePtr = (char *)this + sizeof(Stub)
                                      + pos * sizeof(mirror::HeapReference<mirror::Object>);
@@ -25,6 +30,20 @@ inline void Stub::SetReference(int pos, mirror::Object * ref) {
 
 inline mirror::Object * Stub::GetReference(int pos) {
     return GetReferenceAddress(pos)->AsMirrorPtr();
+}
+
+inline int Stub::CountReferences(mirror::Object * object) {
+    // Copied from niel_instrumentation.cc
+    object->SetIgnoreReadFlag();
+    mirror::Class * klass = object->GetClass();
+    object->ClearIgnoreReadFlag();
+    uint32_t numPointers = klass->NumReferenceInstanceFields();
+    mirror::Class * superClass = klass->GetSuperClass();
+    while (superClass != nullptr) {
+        numPointers += superClass->NumReferenceInstanceFields();
+        superClass = superClass->GetSuperClass();
+    }
+    return numPointers;
 }
 
 // Copied from mirror/object.h

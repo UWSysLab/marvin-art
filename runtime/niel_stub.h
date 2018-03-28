@@ -21,27 +21,33 @@ namespace swap {
 class Stub {
   public:
     static size_t GetStubSize(int numRefs);
+    static size_t GetStubSize(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_);
 
-    void Init(int numRefs) SHARED_REQUIRES(Locks::mutator_lock_);
+    void Populate(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_);
 
     void SetReference(int pos, mirror::Object * ref) SHARED_REQUIRES(Locks::mutator_lock_);
     mirror::Object * GetReference(int pos) SHARED_REQUIRES(Locks::mutator_lock_);
     mirror::HeapReference<mirror::Object> * GetReferenceAddress(int pos)
-        SHARED_REQUIRES(Locks::mutator_lock_);
+            SHARED_REQUIRES(Locks::mutator_lock_);
 
     // Copied from mirror/object.h
     bool GetStubFlag();
 
     void Dump();
 
+    int GetNumRefs() { return num_refs_; }
+
   private:
     // Copied from mirror/object.h
     static uint8_t GetBitsAtomic8(const std::atomic<uint8_t> & data, uint8_t offset,
-                                uint8_t width, std::memory_order order);
+                                  uint8_t width, std::memory_order order);
     static void SetBitsAtomic8(std::atomic<uint8_t> & data, uint8_t offset, uint8_t width,
-                             std::memory_order order);
-    static void ClearBitsAtomic8(std::atomic<uint8_t> & data, uint8_t offset, uint8_t width,
                                std::memory_order order);
+    static void ClearBitsAtomic8(std::atomic<uint8_t> & data, uint8_t offset, uint8_t width,
+                                 std::memory_order order);
+
+    static int CountReferences(mirror::Object * object)
+            SHARED_REQUIRES(Locks::mutator_lock_);
 
     void SetStubFlag();
     void ClearFlags();
