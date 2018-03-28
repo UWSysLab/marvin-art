@@ -132,8 +132,8 @@ class MANAGED LOCKABLE Object {
    * Current layout of added header bytes:
    *
    * x_flags_:
-   * 765432|1|0
-   * unused|f|d
+   * 7|65432|1|0
+   * s|-----|f|d
    *
    * x_shift_regs_:
    * 7654|3210
@@ -147,6 +147,7 @@ class MANAGED LOCKABLE Object {
    * 76543210
    * write counter
    *
+   * s: stub flag
    * f: ignore read flag
    * d: dirty bit
    * rsr: read shift register (for Clock working set estimation)
@@ -174,6 +175,8 @@ class MANAGED LOCKABLE Object {
   bool GetDirtyBit();
   void SetDirtyBit();
   void ClearDirtyBit();
+
+  bool GetStubFlag();
 
   uint32_t GetPadding() {
     return x_padding_;

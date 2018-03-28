@@ -1257,6 +1257,10 @@ inline void Object::ClearDirtyBit() {
   ClearBitsAtomic8(x_flags_, 0, 1, std::memory_order_acq_rel);
 }
 
+inline bool Object::GetStubFlag() {
+  return (bool)GetBitsAtomic8(x_flags_, 7, 1, std::memory_order_acquire);
+}
+
 }  // namespace mirror
 }  // namespace art
 
