@@ -356,6 +356,10 @@ void CheckAndUpdate(gc::collector::GarbageCollector * gc, mirror::Object * objec
         return;
     }
 
+    if (object->GetStubFlag()) {
+        return;
+    }
+
     object->SetIgnoreReadFlag();
     size_t objectSize = object->SizeOf();
     object->ClearIgnoreReadFlag();

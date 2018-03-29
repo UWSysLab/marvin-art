@@ -201,6 +201,10 @@ void CountAccess(gc::collector::GarbageCollector * gc, mirror::Object * object) 
         return;
     }
 
+    if (object->GetStubFlag()) {
+        return;
+    }
+
     object->SetIgnoreReadFlag();
     size_t objectSize = object->SizeOf();
     mirror::Class * klass = object->GetClass();
