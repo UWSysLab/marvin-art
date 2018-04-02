@@ -21,6 +21,7 @@
 
 #include "gc/accounting/heap_bitmap.h"
 #include "mirror/object-inl.h"
+#include "niel_stub-inl.h"
 
 namespace art {
 namespace gc {
@@ -28,6 +29,10 @@ namespace collector {
 
 inline mirror::Object* SemiSpace::GetForwardingAddressInFromSpace(mirror::Object* obj) const {
   DCHECK(from_space_->HasAddress(obj));
+  if (obj->GetStubFlag()) {
+    niel::swap::Stub * stub = (niel::swap::Stub *)obj;
+    return reinterpret_cast<mirror::Object*>(stub->GetForwardingAddress());
+  }
   LockWord lock_word = obj->GetLockWord(false);
   if (lock_word.GetState() != LockWord::kForwardingAddress) {
     return nullptr;
@@ -53,8 +58,14 @@ inline void SemiSpace::MarkObject(
       DCHECK(forward_address != nullptr);
       // Make sure to only update the forwarding address AFTER you copy the object so that the
       // monitor word doesn't Get stomped over.
-      obj->SetLockWord(
-          LockWord::FromForwardingAddress(reinterpret_cast<size_t>(forward_address)), false);
+      if (obj->GetStubFlag()) {
+        niel::swap::Stub * stub = (niel::swap::Stub *)obj;
+        stub->SetForwardingAddress(reinterpret_cast<size_t>(forward_address));
+      }
+      else {
+        obj->SetLockWord(
+            LockWord::FromForwardingAddress(reinterpret_cast<size_t>(forward_address)), false);
+      }
       // Push the object onto the mark stack for later processing.
       MarkStackPush(forward_address);
     }

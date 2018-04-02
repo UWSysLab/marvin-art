@@ -73,6 +73,10 @@ inline void Stub::ClearFlags() {
   ClearBitsAtomic8(x_flags_, 0, 8, std::memory_order_acq_rel);
 }
 
+inline size_t Stub::GetSize() {
+    return GetStubSize(num_refs_);
+}
+
 
 } // namespace swap
 } // namespace niel

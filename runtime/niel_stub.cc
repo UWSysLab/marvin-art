@@ -53,10 +53,10 @@ class DummyReferenceVisitor {
 void Stub::Populate(mirror::Object * object) {
     ClearFlags();
     SetStubFlag();
+    forwarding_address_ = 0;
     padding_a_ = 0;
     padding_b_ = 0;
     padding_c_ = 0;
-    padding_d_ = 0;
 
     num_refs_ = CountReferences(object);
 
@@ -71,7 +71,7 @@ void Stub::Populate(mirror::Object * object) {
 
 void Stub::Dump() {
     LOG(INFO) << "NIEL stub dump:";
-    size_t stubSize = GetStubSize(num_refs_);
+    size_t stubSize = GetSize();
     char * stubData = (char *)this;
     for (size_t i = 0; i < stubSize; i++) {
         LOG(INFO) << i << ": " << std::hex << (int)stubData[i];

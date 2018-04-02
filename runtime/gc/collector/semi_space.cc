@@ -506,7 +506,14 @@ static inline size_t CopyAvoidingDirtyingPages(void* dest, const void* src, size
 }
 
 mirror::Object* SemiSpace::MarkNonForwardedObject(mirror::Object* obj) {
-  const size_t object_size = obj->SizeOf();
+  size_t object_size;
+  if (obj->GetStubFlag()) {
+    niel::swap::Stub * stub = (niel::swap::Stub *)obj;
+    object_size = stub->GetSize();
+  }
+  else {
+    object_size = obj->SizeOf();
+  }
   size_t bytes_allocated, dummy;
   mirror::Object* forward_address = nullptr;
   if (generational_ && reinterpret_cast<uint8_t*>(obj) < last_gc_to_space_end_) {

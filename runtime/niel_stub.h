@@ -33,9 +33,14 @@ class Stub {
     // Copied from mirror/object.h
     bool GetStubFlag();
 
+    size_t GetSize();
+
     void Dump();
 
     int GetNumRefs() { return num_refs_; }
+
+    uint32_t GetForwardingAddress() { return forwarding_address_; }
+    void SetForwardingAddress(uint32_t addr) { forwarding_address_ = addr; }
 
   private:
     // Copied from mirror/object.h
@@ -53,13 +58,14 @@ class Stub {
     void ClearFlags();
 
     uint32_t padding_a_;
-    uint32_t padding_b_;
+
+    uint32_t forwarding_address_;
 
     std::atomic<uint8_t> x_flags_;
-    uint8_t padding_c_;
+    uint8_t padding_b_;
     uint16_t num_refs_;
 
-    uint32_t padding_d_;
+    uint32_t padding_c_;
 };
 
 } // namespace swap
