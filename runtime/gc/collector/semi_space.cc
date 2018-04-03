@@ -728,6 +728,17 @@ class SemiSpace::MarkObjectVisitor {
 // Visit all of the references of an object and update.
 void SemiSpace::ScanObject(Object* obj) {
   DCHECK(!from_space_->HasAddress(obj)) << "Scanning object " << obj << " in from space";
+  if (obj->GetStubFlag()) {
+    niel::swap::Stub * stub = (niel::swap::Stub *)obj;
+    for (int i = 0; i < stub->GetNumRefs(); i++) {
+      mirror::Object * rawRef = stub->GetReference(i);
+      mirror::CompressedReference<mirror::Object> typedRef
+          = mirror::CompressedReference<mirror::Object>::FromMirrorPtr(rawRef);
+      MarkObject(&typedRef);
+      stub->SetReference(i, typedRef.AsMirrorPtr());
+    }
+    return;
+  }
   MarkObjectVisitor visitor(this);
   obj->VisitReferences(visitor, visitor);
 }
