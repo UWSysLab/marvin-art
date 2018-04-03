@@ -69,14 +69,42 @@ void Stub::Populate(mirror::Object * object) {
     object->VisitReferences(visitor, dummyVisitor);
 }
 
-void Stub::Dump() {
-    LOG(INFO) << "NIEL stub dump:";
+void Stub::RawDump() {
+    LOG(INFO) << "NIEL raw dump for stub @" << this;
     size_t stubSize = GetSize();
     char * stubData = (char *)this;
     for (size_t i = 0; i < stubSize; i++) {
         LOG(INFO) << i << ": " << std::hex << (int)stubData[i];
     }
-    LOG(INFO) << "NIEL end stub dump.";
+    LOG(INFO) << "NIEL end raw dump for stub @" << this;
+}
+
+void Stub::SemanticDump() {
+    LOG(INFO) << "NIEL semantic dump for stub @" << this;
+    LOG(INFO) << "forwarding_address_: " << std::hex << forwarding_address_;
+    LOG(INFO) << "stub flag: "<< GetStubFlag();
+    LOG(INFO) << "num_refs_: " << num_refs_;
+    for (int i = 0; i < GetNumRefs(); i++) {
+        std::string refString;
+        mirror::Object * ref = GetReference(i);
+        if (ref == nullptr) {
+            refString = "null";
+        }
+        else {
+            if (ref->GetStubFlag()) {
+                refString = "stub";
+            }
+            else {
+                mirror::Class * klass = ref->GetClass();
+                if (klass == nullptr) {
+                    refString = "null class";
+                }
+                refString = PrettyClass(klass);
+            }
+        }
+        LOG(INFO) << "ref " << i << ": " << ref << " " << refString;
+    }
+    LOG(INFO) << "NIEL end semantic dump for stub @" << this;
 }
 
 } // namespace swap

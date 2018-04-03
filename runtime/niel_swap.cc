@@ -5,6 +5,7 @@
 #include "gc/task_processor.h"
 #include "mirror/object.h"
 #include "mirror/object-inl.h"
+#include "niel_stub-inl.h"
 #include "runtime.h"
 
 #include <cstdio>
@@ -13,6 +14,7 @@
 #include <fstream>
 #include <map>
 #include <set>
+#include <queue>
 #include <vector>
 
 namespace art {
@@ -32,6 +34,7 @@ bool checkStreamError(const std::ios & stream, const std::string & msg);
 void validateSwapFile();
 gc::Heap * getHeapChecked();
 gc::TaskProcessor * getTaskProcessorChecked();
+void dumpObject(mirror::Object * obj);
 
 /* Variables */
 Mutex writeQueueMutex("WriteQueueMutex", kLoggingLock);
@@ -42,6 +45,8 @@ std::fstream swapfile;
 uint32_t pid = 0;
 std::map<void *, std::streampos> objectOffsetMap;
 std::map<void *, size_t> objectSizeMap;
+std::map<void *, void *> remappingTable;
+std::queue<mirror::Object *> swapOutQueue;
 int freedObjects = 0;
 long freedSize = 0;
 int swapfileObjects = 0;
@@ -203,6 +208,110 @@ class WriteTask : public gc::HeapTask {
         }
     }
 };
+
+// Based on MarkVisitor in runtime/gc/collector/mark_sweep.cc
+class PatchVisitor {
+  public:
+    void operator()(mirror::Object * obj,
+                    MemberOffset offset,
+                    bool is_static ATTRIBUTE_UNUSED) const
+            SHARED_REQUIRES(Locks::mutator_lock_) {
+        mirror::Object * ref = obj->GetFieldObject<mirror::Object>(offset);
+        if (remappingTable.count(ref)) {
+            obj->SetFieldObject<false>(offset, (mirror::Object *)remappingTable[ref]);
+        }
+    }
+
+    void VisitRootIfNonNull(mirror::CompressedReference<mirror::Object>* root ATTRIBUTE_UNUSED) const {}
+
+    void VisitRoot(mirror::CompressedReference<mirror::Object>* root ATTRIBUTE_UNUSED) const {}
+};
+
+
+// Method signature from MarkSweep::DelayReferenceReferentVisitor in
+// runtime/gc/collector/mark_sweep.cc.
+//
+// TODO: Figure out if this class should actually be doing something
+class PatchDummyReferenceVisitor {
+  public:
+    void operator()(mirror::Class* klass ATTRIBUTE_UNUSED,
+                    mirror::Reference* ref ATTRIBUTE_UNUSED) const {}
+};
+
+int debugCounter = 0;
+void PatchCallback(void * start, void * end ATTRIBUTE_UNUSED, size_t num_bytes,
+                  void * callback_arg ATTRIBUTE_UNUSED)
+        REQUIRES(Locks::mutator_lock_) {
+    if (start == nullptr || num_bytes == 0) {
+        return;
+    }
+
+    mirror::Object * obj = (mirror::Object *)start;
+    if (obj->GetStubFlag()) {
+        Stub * stub = (Stub *)obj;
+        for (int i = 0; i < stub->GetNumRefs(); i++) {
+            mirror::Object * ref = stub->GetReference(i);
+            if (remappingTable.count(ref)) {
+                stub->SetReference(i, (mirror::Object *)remappingTable[ref]);
+            }
+        }
+    }
+    else {
+        PatchVisitor visitor;
+        PatchDummyReferenceVisitor dummyVisitor;
+        obj->VisitReferences(visitor, dummyVisitor);
+    }
+
+    debugCounter++;
+    if (debugCounter >= 50000) {
+        LOG(INFO) << "Inspected 50000 objects";
+        debugCounter = 0;
+    }
+}
+
+void PatchStubReferences(Thread * self ATTRIBUTE_UNUSED, gc::Heap * heap) {
+    LOG(INFO) << "NIEL start patching stub references";
+    uint64_t startTime = NanoTime();
+
+    gc::space::LargeObjectSpace * largeObjectSpace = heap->GetLargeObjectsSpace();
+    largeObjectSpace->Walk(&PatchCallback, nullptr);
+
+    gc::space::RosAllocSpace * rosAllocSpace = heap->GetRosAllocSpace();
+    rosAllocSpace->Walk(&PatchCallback, nullptr);
+
+    remappingTable.clear();
+
+    uint64_t endTime = NanoTime();
+    uint64_t duration = endTime - startTime;
+    LOG(INFO) << "NIEL patching stub references took " << PrettyDuration(duration);
+}
+
+void ReplaceObjectsWithStubs(Thread * self, gc::Heap * heap) {
+    while (!swapOutQueue.empty()) {
+        mirror::Object * obj = swapOutQueue.front();
+        if (obj->GetDirtyBit()) {
+            return;
+        }
+
+        size_t stubSize = Stub::GetStubSize(obj);
+        size_t bytes_allocated;
+        size_t usable_size;
+        size_t bytes_tl_bulk_allocated;
+        mirror::Object * stubData = heap->GetRosAllocSpace()
+                                         ->Alloc(self,
+                                                 stubSize,
+                                                 &bytes_allocated,
+                                                 &usable_size,
+                                                 &bytes_tl_bulk_allocated);
+        Stub * stub = (Stub *)stubData;
+        stub->Populate(obj);
+
+        heap->GetRosAllocSpace()->Free(self, obj);
+
+        remappingTable[obj] = stub;
+        swapOutQueue.pop();
+    }
+}
 
 gc::Heap * getHeapChecked() {
     Runtime * runtime = Runtime::Current();
@@ -481,6 +590,48 @@ bool checkStreamError(const std::ios & stream, const std::string & msg) {
                    << stream.eof() << " " << stream.fail() << " " << stream.bad() << ")";
     }
     return error;
+}
+
+class DumpObjectVisitor {
+  public:
+    void operator()(mirror::Object * obj,
+                    MemberOffset offset,
+                    bool is_static ATTRIBUTE_UNUSED) const
+            SHARED_REQUIRES(Locks::mutator_lock_) {
+        mirror::Object * ref = obj->GetFieldObject<mirror::Object>(offset);
+        std::string refString;
+        if (ref == nullptr) {
+            refString = "null";
+        }
+        else if (ref->GetClass() == nullptr) {
+            refString = "null class";
+        }
+        else {
+            refString = PrettyClass(ref->GetClass());
+        }
+        LOG(INFO) << "ref: " << ref << " " << refString;
+    }
+    void VisitRootIfNonNull(mirror::CompressedReference<mirror::Object>* root ATTRIBUTE_UNUSED) const {}
+    void VisitRoot(mirror::CompressedReference<mirror::Object>* root ATTRIBUTE_UNUSED) const {}
+};
+
+class DumpObjectReferenceVisitor {
+  public:
+    void operator()(mirror::Class* klass ATTRIBUTE_UNUSED,
+                    mirror::Reference* ref ATTRIBUTE_UNUSED) const {}
+};
+
+void dumpObject(mirror::Object * obj) SHARED_REQUIRES(Locks::mutator_lock_) {
+    LOG(INFO) << "NIEL dump of object @" << obj;
+    LOG(INFO) << "size: " << obj->SizeOf();
+    LOG(INFO) << "class: "
+              << (obj->GetClass() == nullptr ? "null" : PrettyClass(obj->GetClass()));
+
+    DumpObjectVisitor visitor;
+    DumpObjectReferenceVisitor refVisitor;
+    obj->VisitReferences(visitor, refVisitor);
+
+    LOG(INFO) << "NIEL end dump of object @" << obj;
 }
 
 } // namespace swap

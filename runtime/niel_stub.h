@@ -35,7 +35,9 @@ class Stub {
 
     size_t GetSize();
 
-    void Dump();
+    void RawDump();
+
+    void SemanticDump() SHARED_REQUIRES(Locks::mutator_lock_);
 
     int GetNumRefs() { return num_refs_; }
 
