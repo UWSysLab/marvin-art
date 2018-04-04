@@ -23,7 +23,8 @@ class Stub {
     static size_t GetStubSize(int numRefs);
     static size_t GetStubSize(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_);
 
-    void Populate(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_);
+    void PopulateFrom(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_);
+    void CopyRefsInto(mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_);
 
     void SetReference(int pos, mirror::Object * ref) SHARED_REQUIRES(Locks::mutator_lock_);
     mirror::Object * GetReference(int pos) SHARED_REQUIRES(Locks::mutator_lock_);
@@ -44,6 +45,9 @@ class Stub {
     uint32_t GetForwardingAddress() { return forwarding_address_; }
     void SetForwardingAddress(uint32_t addr) { forwarding_address_ = addr; }
 
+    void SetLargeObjectFlag();
+    bool GetLargeObjectFlag();
+
   private:
     // Copied from mirror/object.h
     static uint8_t GetBitsAtomic8(const std::atomic<uint8_t> & data, uint8_t offset,
@@ -63,6 +67,14 @@ class Stub {
 
     uint32_t forwarding_address_;
 
+    /*
+     * x_flags_ layout:
+     * 7|6|543210
+     * s|l|
+     *
+     * s: stub flag
+     * l: large object flag
+     */
     std::atomic<uint8_t> x_flags_;
     uint8_t padding_b_;
     uint16_t num_refs_;

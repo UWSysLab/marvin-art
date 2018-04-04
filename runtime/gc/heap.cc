@@ -949,6 +949,10 @@ void Heap::UpdateProcessState(ProcessState old_process_state, ProcessState new_p
       usleep(kCollectorTransitionStressWait);
     }
     if (jank_perceptible) {
+      {
+        ScopedSuspendAll ssa("niel_swap_objects_in");
+        niel::swap::SwapObjectsIn(this);
+      }
       // Transition back to foreground right away to prevent jank.
       RequestCollectorTransition(foreground_collector_type_, 0);
     } else {

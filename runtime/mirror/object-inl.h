@@ -1141,6 +1141,8 @@ inline void Object::VisitReferences(const Visitor& visitor,
   SetIgnoreReadFlag();
   mirror::Class* klass = GetClass<kVerifyFlags, kReadBarrierOption>();
   visitor(this, ClassOffset(), false);
+  // Necessary in case the visitor changed the class reference
+  klass = GetClass<kVerifyFlags, kReadBarrierOption>();
   const uint32_t class_flags = klass->GetClassFlags<kVerifyNone>();
   if (LIKELY(class_flags == kClassFlagNormal)) {
     DCHECK((!klass->IsVariableSize<kVerifyFlags, kReadBarrierOption>()));

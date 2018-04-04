@@ -44,13 +44,42 @@ class StubPopulateVisitor {
 // runtime/gc/collector/mark_sweep.cc.
 //
 // TODO: Make sure this class is not actually being used when populating stubs
+//       or copying refs into objects
 class DummyReferenceVisitor {
   public:
     void operator()(mirror::Class* klass ATTRIBUTE_UNUSED,
                     mirror::Reference* ref ATTRIBUTE_UNUSED) const {}
 };
 
-void Stub::Populate(mirror::Object * object) {
+// Based on MarkVisitor in runtime/gc/collector/mark_sweep.cc
+//
+// TODO: Make sure none of these things cause correctness issues:
+//     1) Using a mutable variable modified from a const function to track the current offset
+//     2) Assuming Object::VisitReferences() visits references in a deterministic order
+class CopyRefsVisitor {
+  public:
+    CopyRefsVisitor(Stub * stub) : stub_(stub), cur_ref_(0) {}
+
+    void operator()(mirror::Object * obj,
+                    MemberOffset offset,
+                    bool is_static ATTRIBUTE_UNUSED) const
+            SHARED_REQUIRES(Locks::mutator_lock_) {
+        LOG(INFO) << "NIELDEBUG replacing ref " << obj->GetFieldObject<mirror::Object>(offset)
+                  << " with ref " << stub_->GetReference(cur_ref_) << ", cur_ref_ " << cur_ref_;
+        obj->SetFieldObject<false>(offset, stub_->GetReference(cur_ref_));
+        cur_ref_++;
+    }
+
+    void VisitRootIfNonNull(mirror::CompressedReference<mirror::Object>* root ATTRIBUTE_UNUSED) const {}
+
+    void VisitRoot(mirror::CompressedReference<mirror::Object>* root ATTRIBUTE_UNUSED) const {}
+
+  private:
+    Stub * stub_;
+    mutable uint32_t cur_ref_;
+};
+
+void Stub::PopulateFrom(mirror::Object * object) {
     ClearFlags();
     SetStubFlag();
     forwarding_address_ = 0;
@@ -65,6 +94,12 @@ void Stub::Populate(mirror::Object * object) {
     }
 
     StubPopulateVisitor visitor(this);
+    DummyReferenceVisitor dummyVisitor;
+    object->VisitReferences(visitor, dummyVisitor);
+}
+
+void Stub::CopyRefsInto(mirror::Object * object) {
+    CopyRefsVisitor visitor(this);
     DummyReferenceVisitor dummyVisitor;
     object->VisitReferences(visitor, dummyVisitor);
 }

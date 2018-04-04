@@ -316,7 +316,11 @@ void ReplaceObjectsWithStubs(Thread * self, gc::Heap * heap) {
                                                  &usable_size,
                                                  &bytes_tl_bulk_allocated);
         Stub * stub = (Stub *)stubData;
-        stub->Populate(obj);
+        stub->PopulateFrom(obj);
+
+        if (heap->GetLargeObjectsSpace()->Contains(obj)) {
+            stub->SetLargeObjectFlag();
+        }
 
         heap->GetRosAllocSpace()->Free(self, obj);
 
@@ -334,6 +338,63 @@ void RecordForwardedObject(mirror::Object * obj, mirror::Object * forwardAddress
 void SemiSpaceUpdateDataStructures() {
     replaceDataStructurePointers(semiSpaceRemappingTable);
     semiSpaceRemappingTable.clear();
+}
+
+void SwapObjectsIn(gc::Heap * heap) {
+    LOG(INFO) << "Start swapping objects back in";
+    uint64_t startTime = NanoTime();
+
+    Thread * self = Thread::Current();
+    for (auto it = objectOffsetMap.begin(); it != objectOffsetMap.end(); it++) {
+        mirror::Object * obj = (mirror::Object *)it->first;
+        if (obj->GetStubFlag()) {
+            Stub * stub = (Stub *)obj;
+            size_t objSize = objectSizeMap[stub];
+
+            mirror::Object * newObj = nullptr;
+            if (stub->GetLargeObjectFlag()) {
+                //TODO: allocate in large object space
+            }
+            else {
+                //TODO: handle allocation failure like Heap::AllocObjectWithAllocator()
+                size_t bytesAllocated;
+                size_t usableSize;
+                size_t bytesTlBulkAllocated;
+                newObj = heap->GetRosAllocSpace()
+                             ->Alloc(self,
+                                     objSize,
+                                     &bytesAllocated,
+                                     &usableSize,
+                                     &bytesTlBulkAllocated);
+            }
+
+            if (newObj == nullptr) {
+                LOG(INFO) << "NIELERROR failed to allocate object of size " << objSize
+                          << "; dumping stub";
+                stub->SemanticDump();
+            }
+            else {
+                std::streampos objOffset = objectOffsetMap[stub];
+                std::streampos curPos = swapfile.tellp();
+                swapfile.seekg(objOffset);
+                swapfile.read((char *)newObj, objSize);
+                swapfile.seekg(curPos);
+
+                stub->CopyRefsInto(newObj);
+                dumpObject(newObj);
+
+                heap->GetRosAllocSpace()->Free(self, obj);
+
+                remappingTable[stub] = newObj;
+            }
+        }
+    }
+    PatchStubReferences(self, heap);
+    replaceDataStructurePointers(remappingTable);
+
+    uint64_t endTime = NanoTime();
+    uint64_t duration = endTime - startTime;
+    LOG(INFO) << "NIEL swapping objects back in took " << PrettyDuration(duration);
 }
 
 gc::Heap * getHeapChecked() {

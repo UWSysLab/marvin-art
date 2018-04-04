@@ -50,6 +50,11 @@ void ReplaceObjectsWithStubs(Thread * self, gc::Heap * heap) REQUIRES(Locks::mut
 void PatchStubReferences(Thread * self, gc::Heap * heap) REQUIRES(Locks::mutator_lock_);
 
 /*
+ * Swap all live objects in the swap file back into memory.
+ */
+void SwapObjectsIn(gc::Heap * heap) REQUIRES(Locks::mutator_lock_);
+
+/*
  * Called by semi-space GC to tell us where an object is moving.
  */
 void RecordForwardedObject(mirror::Object * obj, mirror::Object * forwardAddress);
