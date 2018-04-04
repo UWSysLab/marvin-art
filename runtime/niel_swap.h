@@ -49,6 +49,17 @@ void ReplaceObjectsWithStubs(Thread * self, gc::Heap * heap) REQUIRES(Locks::mut
  */
 void PatchStubReferences(Thread * self, gc::Heap * heap) REQUIRES(Locks::mutator_lock_);
 
+/*
+ * Called by semi-space GC to tell us where an object is moving.
+ */
+void RecordForwardedObject(mirror::Object * obj, mirror::Object * forwardAddress);
+
+/*
+ * Update bookkeeping data structures to have correct pointers after
+ * semi-space GC.
+ */
+void SemiSpaceUpdateDataStructures();
+
 } // namespace swap
 } // namespace niel
 } // namespace art

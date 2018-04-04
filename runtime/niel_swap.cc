@@ -32,6 +32,7 @@ std::string getPackageName();
 void openFile(const std::string & path, std::fstream & stream);
 bool checkStreamError(const std::ios & stream, const std::string & msg);
 void validateSwapFile();
+void replaceDataStructurePointers(const std::map<void *, void *> & addrTable);
 gc::Heap * getHeapChecked();
 gc::TaskProcessor * getTaskProcessorChecked();
 void dumpObject(mirror::Object * obj);
@@ -46,6 +47,7 @@ uint32_t pid = 0;
 std::map<void *, std::streampos> objectOffsetMap;
 std::map<void *, size_t> objectSizeMap;
 std::map<void *, void *> remappingTable;
+std::map<void *, void *> semiSpaceRemappingTable; //TODO: combine with normal remapping table?
 std::queue<mirror::Object *> swapOutQueue;
 int freedObjects = 0;
 long freedSize = 0;
@@ -238,7 +240,6 @@ class PatchDummyReferenceVisitor {
                     mirror::Reference* ref ATTRIBUTE_UNUSED) const {}
 };
 
-int debugCounter = 0;
 void PatchCallback(void * start, void * end ATTRIBUTE_UNUSED, size_t num_bytes,
                   void * callback_arg ATTRIBUTE_UNUSED)
         REQUIRES(Locks::mutator_lock_) {
@@ -261,12 +262,6 @@ void PatchCallback(void * start, void * end ATTRIBUTE_UNUSED, size_t num_bytes,
         PatchDummyReferenceVisitor dummyVisitor;
         obj->VisitReferences(visitor, dummyVisitor);
     }
-
-    debugCounter++;
-    if (debugCounter >= 50000) {
-        LOG(INFO) << "Inspected 50000 objects";
-        debugCounter = 0;
-    }
 }
 
 void PatchStubReferences(Thread * self ATTRIBUTE_UNUSED, gc::Heap * heap) {
@@ -279,11 +274,28 @@ void PatchStubReferences(Thread * self ATTRIBUTE_UNUSED, gc::Heap * heap) {
     gc::space::RosAllocSpace * rosAllocSpace = heap->GetRosAllocSpace();
     rosAllocSpace->Walk(&PatchCallback, nullptr);
 
+    replaceDataStructurePointers(remappingTable);
+
     remappingTable.clear();
 
     uint64_t endTime = NanoTime();
     uint64_t duration = endTime - startTime;
     LOG(INFO) << "NIEL patching stub references took " << PrettyDuration(duration);
+}
+
+void replaceDataStructurePointers(const std::map<void *, void *> & addrTable) {
+    for (auto it = addrTable.begin(); it != addrTable.end(); it++) {
+        void * originalPtr = it->first;
+        void * newPtr = it->second;
+
+        auto oomIt = objectOffsetMap.find(originalPtr);
+        objectOffsetMap[newPtr] = oomIt->second;
+        objectOffsetMap.erase(oomIt);
+
+        auto osmIt = objectSizeMap.find(originalPtr);
+        objectSizeMap[newPtr] = osmIt->second;
+        objectSizeMap.erase(osmIt);
+    }
 }
 
 void ReplaceObjectsWithStubs(Thread * self, gc::Heap * heap) {
@@ -311,6 +323,17 @@ void ReplaceObjectsWithStubs(Thread * self, gc::Heap * heap) {
         remappingTable[obj] = stub;
         swapOutQueue.pop();
     }
+}
+
+void RecordForwardedObject(mirror::Object * obj, mirror::Object * forwardAddress) {
+    if (objectOffsetMap.count(obj)) {
+        semiSpaceRemappingTable[obj] = forwardAddress;
+    }
+}
+
+void SemiSpaceUpdateDataStructures() {
+    replaceDataStructurePointers(semiSpaceRemappingTable);
+    semiSpaceRemappingTable.clear();
 }
 
 gc::Heap * getHeapChecked() {

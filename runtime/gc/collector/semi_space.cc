@@ -113,6 +113,7 @@ SemiSpace::SemiSpace(Heap* heap, bool generational, const std::string& name_pref
 }
 
 void SemiSpace::RunPhases() {
+  LOG(INFO) << "NIEL running SemiSpace GC";
   Thread* self = Thread::Current();
   InitializePhase();
   // Semi-space collector is special since it is sometimes called with the mutators suspended
@@ -139,6 +140,7 @@ void SemiSpace::RunPhases() {
     GetHeap()->PostGcVerification(this);
   }
   FinishPhase();
+  niel::swap::SemiSpaceUpdateDataStructures();
 }
 
 void SemiSpace::InitializePhase() {
@@ -604,6 +606,7 @@ mirror::Object* SemiSpace::MarkNonForwardedObject(mirror::Object* obj) {
          fallback_space_->HasAddress(forward_address) ||
          (generational_ && promo_dest_space_->HasAddress(forward_address)))
       << forward_address << "\n" << GetHeap()->DumpSpaces();
+  niel::swap::RecordForwardedObject(obj, forward_address);
   return forward_address;
 }
 
