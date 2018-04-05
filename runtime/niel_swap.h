@@ -27,9 +27,9 @@ void GcRecordFree(Thread * self, mirror::Object * object);
  * Open swap file and schedule initial WriteTask, if this process has
  * just forked from the zygote.
  */
-void InitIfNecessary();
+void InitIfNecessary(Thread * self);
 
-void CompactSwapFile();
+void CompactSwapFile(Thread * self);
 
 /*
  * Check if an object should be written to disk and then update its bookkeeping
@@ -57,13 +57,13 @@ void SwapObjectsIn(gc::Heap * heap) REQUIRES(Locks::mutator_lock_);
 /*
  * Called by semi-space GC to tell us where an object is moving.
  */
-void RecordForwardedObject(mirror::Object * obj, mirror::Object * forwardAddress);
+void RecordForwardedObject(Thread * self, mirror::Object * obj, mirror::Object * forwardAddress);
 
 /*
  * Update bookkeeping data structures to have correct pointers after
  * semi-space GC.
  */
-void SemiSpaceUpdateDataStructures();
+void SemiSpaceUpdateDataStructures(Thread * self);
 
 } // namespace swap
 } // namespace niel

@@ -140,7 +140,7 @@ void SemiSpace::RunPhases() {
     GetHeap()->PostGcVerification(this);
   }
   FinishPhase();
-  niel::swap::SemiSpaceUpdateDataStructures();
+  niel::swap::SemiSpaceUpdateDataStructures(self);
 }
 
 void SemiSpace::InitializePhase() {
@@ -606,7 +606,7 @@ mirror::Object* SemiSpace::MarkNonForwardedObject(mirror::Object* obj) {
          fallback_space_->HasAddress(forward_address) ||
          (generational_ && promo_dest_space_->HasAddress(forward_address)))
       << forward_address << "\n" << GetHeap()->DumpSpaces();
-  niel::swap::RecordForwardedObject(obj, forward_address);
+  niel::swap::RecordForwardedObject(self_, obj, forward_address);
   return forward_address;
 }
 

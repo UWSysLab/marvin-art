@@ -11,10 +11,13 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <fcntl.h>
 #include <fstream>
 #include <map>
-#include <set>
 #include <queue>
+#include <set>
+#include <sys/sendfile.h>
+#include <sys/stat.h>
 #include <vector>
 
 namespace art {
@@ -30,22 +33,44 @@ const double COMPACT_THRESHOLD = 0.25;
 /* Internal functions */
 std::string getPackageName();
 void openFile(const std::string & path, std::fstream & stream);
+void openFileAppend(const std::string & path, std::fstream & stream);
 bool checkStreamError(const std::ios & stream, const std::string & msg);
-void validateSwapFile();
-void replaceDataStructurePointers(const std::map<void *, void *> & addrTable);
 gc::Heap * getHeapChecked();
 gc::TaskProcessor * getTaskProcessorChecked();
 void dumpObject(mirror::Object * obj);
 
+/*
+ * For each key-value pair (a,b) in addrTable, replaces any key-value pair
+ * (a,c) in objectOffsetMap or objectSizeMap with the new entry (b,c).
+ */
+void replaceDataStructurePointers(Thread * self, const std::map<void *, void *> & addrTable);
+
+/*
+ * Copies a file. Returns true on success and false on error. The caller is
+ * responsible for making sure that all open file descriptors to both the
+ * source and destination files are closed.
+ */
+bool copyFile(const std::string & fromFileName, const std::string & toFileName);
+
+/*
+ * Checks to make sure that the swap file contains every object at the correct
+ * position. This function exclusively holds the swapFileMutex for a long time!
+ * Use it only in debug builds.
+ */
+void validateSwapFile(Thread * self);
+
 /* Variables */
 Mutex writeQueueMutex("WriteQueueMutex", kLoggingLock);
+ReaderWriterMutex swapStateMutex("SwapStateMutex", kDefaultMutexLevel);
+// Holding the swapFileMutex while reading the swap file always guarantees that
+// reads return valid data, and it guarantees that reads reflect the latest
+// writes iff the WriteTask always runs on the same thread as swap file
+// compaction (as it does for marlin builds running on a Pixel XL).
+Mutex swapFileMutex("SwapFileMutex", kLoggingLock);
 
 // Not locked but assumed to be only touched in one thread (because all Tasks,
 // including GC, run on the same fixed thread)
-std::fstream swapfile;
 uint32_t pid = 0;
-std::map<void *, std::streampos> objectOffsetMap;
-std::map<void *, size_t> objectSizeMap;
 std::map<void *, void *> remappingTable;
 std::map<void *, void *> semiSpaceRemappingTable; //TODO: combine with normal remapping table?
 std::queue<mirror::Object *> swapOutQueue;
@@ -54,9 +79,16 @@ long freedSize = 0;
 int swapfileObjects = 0;
 int swapfileSize = 0;
 
+// Locked by swapFileMutex
+std::fstream swapfile;
+
+// Locked by swapStateMutex
+std::map<void *, std::streampos> objectOffsetMap;
+std::map<void *, size_t> objectSizeMap;
+
 // Locked by writeQueueMutex
 std::vector<mirror::Object *> writeQueue;
-std::set<mirror::Object *> writeSet; // prevent duplicate entries in writeQueue
+std::set<mirror::Object *> writeSet; // prevents duplicate entries in writeQueue
 
 class WriteTask : public gc::HeapTask {
   public:
@@ -132,7 +164,12 @@ class WriteTask : public gc::HeapTask {
                 object->ClearDirtyBit();
                 std::memcpy(objectData, object, objectSize);
 
-                if (objectOffsetMap.find(object) == objectOffsetMap.end()) {
+                swapStateMutex.SharedLock(self);
+                bool inSwapFile = (objectOffsetMap.find(object) != objectOffsetMap.end());
+                swapStateMutex.SharedUnlock(self);
+
+                if (!inSwapFile) {
+                    swapFileMutex.ExclusiveLock(self);
                     std::streampos offset = swapfile.tellp();
                     swapfile.write(objectData, objectSize);
                     bool writeError = checkStreamError(swapfile,
@@ -140,19 +177,27 @@ class WriteTask : public gc::HeapTask {
                     if (writeError) {
                         ioError = true;
                     }
+                    swapFileMutex.ExclusiveUnlock(self);
+
+                    swapStateMutex.ExclusiveLock(self);
                     objectOffsetMap[object] = offset;
                     objectSizeMap[object] = objectSize;
+                    swapStateMutex.ExclusiveUnlock(self);
 
                     swapfileObjects++;
                     swapfileSize += objectSize;
                 }
                 else {
+                    swapStateMutex.SharedLock(self);
                     std::streampos offset = objectOffsetMap[object];
                     size_t size = objectSizeMap[object];
+                    swapStateMutex.SharedUnlock(self);
+
                     if (size != objectSize) {
                         numResizedObjects++;
                     }
                     else {
+                        swapFileMutex.ExclusiveLock(self);
                         std::streampos curpos = swapfile.tellp();
                         swapfile.seekp(offset);
                         swapfile.write(objectData, objectSize);
@@ -162,6 +207,7 @@ class WriteTask : public gc::HeapTask {
                             ioError = true;
                         }
                         swapfile.seekp(curpos);
+                        swapFileMutex.ExclusiveUnlock(self);
                     }
                 }
 
@@ -191,8 +237,8 @@ class WriteTask : public gc::HeapTask {
         }
 
         if ((double)freedSize / swapfileSize > COMPACT_THRESHOLD) {
-            CompactSwapFile();
-            validateSwapFile();
+            CompactSwapFile(self);
+            validateSwapFile(self);
         }
 
         uint64_t nanoTime = NanoTime();
@@ -264,7 +310,7 @@ void PatchCallback(void * start, void * end ATTRIBUTE_UNUSED, size_t num_bytes,
     }
 }
 
-void PatchStubReferences(Thread * self ATTRIBUTE_UNUSED, gc::Heap * heap) {
+void PatchStubReferences(Thread * self, gc::Heap * heap) {
     LOG(INFO) << "NIEL start patching stub references";
     uint64_t startTime = NanoTime();
 
@@ -274,7 +320,7 @@ void PatchStubReferences(Thread * self ATTRIBUTE_UNUSED, gc::Heap * heap) {
     gc::space::RosAllocSpace * rosAllocSpace = heap->GetRosAllocSpace();
     rosAllocSpace->Walk(&PatchCallback, nullptr);
 
-    replaceDataStructurePointers(remappingTable);
+    replaceDataStructurePointers(self, remappingTable);
 
     remappingTable.clear();
 
@@ -283,7 +329,10 @@ void PatchStubReferences(Thread * self ATTRIBUTE_UNUSED, gc::Heap * heap) {
     LOG(INFO) << "NIEL patching stub references took " << PrettyDuration(duration);
 }
 
-void replaceDataStructurePointers(const std::map<void *, void *> & addrTable) {
+//TODO: figure out whether it's better to grab the lock once or keep grabbing
+//      and releasing
+void replaceDataStructurePointers(Thread * self, const std::map<void *, void *> & addrTable) {
+    swapStateMutex.ExclusiveLock(self);
     for (auto it = addrTable.begin(); it != addrTable.end(); it++) {
         void * originalPtr = it->first;
         void * newPtr = it->second;
@@ -296,6 +345,7 @@ void replaceDataStructurePointers(const std::map<void *, void *> & addrTable) {
         objectSizeMap[newPtr] = osmIt->second;
         objectSizeMap.erase(osmIt);
     }
+    swapStateMutex.ExclusiveUnlock(self);
 }
 
 void ReplaceObjectsWithStubs(Thread * self, gc::Heap * heap) {
@@ -329,14 +379,16 @@ void ReplaceObjectsWithStubs(Thread * self, gc::Heap * heap) {
     }
 }
 
-void RecordForwardedObject(mirror::Object * obj, mirror::Object * forwardAddress) {
+void RecordForwardedObject(Thread * self, mirror::Object * obj, mirror::Object * forwardAddress) {
+    swapStateMutex.SharedLock(self);
     if (objectOffsetMap.count(obj)) {
         semiSpaceRemappingTable[obj] = forwardAddress;
     }
+    swapStateMutex.SharedUnlock(self);
 }
 
-void SemiSpaceUpdateDataStructures() {
-    replaceDataStructurePointers(semiSpaceRemappingTable);
+void SemiSpaceUpdateDataStructures(Thread * self) {
+    replaceDataStructurePointers(self, semiSpaceRemappingTable);
     semiSpaceRemappingTable.clear();
 }
 
@@ -345,6 +397,7 @@ void SwapObjectsIn(gc::Heap * heap) {
     uint64_t startTime = NanoTime();
 
     Thread * self = Thread::Current();
+    swapStateMutex.SharedLock(self);
     for (auto it = objectOffsetMap.begin(); it != objectOffsetMap.end(); it++) {
         mirror::Object * obj = (mirror::Object *)it->first;
         if (obj->GetStubFlag()) {
@@ -375,10 +428,13 @@ void SwapObjectsIn(gc::Heap * heap) {
             }
             else {
                 std::streampos objOffset = objectOffsetMap[stub];
+
+                swapFileMutex.ExclusiveLock(self);
                 std::streampos curPos = swapfile.tellp();
                 swapfile.seekg(objOffset);
                 swapfile.read((char *)newObj, objSize);
                 swapfile.seekg(curPos);
+                swapFileMutex.ExclusiveUnlock(self);
 
                 stub->CopyRefsInto(newObj);
                 dumpObject(newObj);
@@ -389,8 +445,9 @@ void SwapObjectsIn(gc::Heap * heap) {
             }
         }
     }
+    swapStateMutex.SharedUnlock(self);
     PatchStubReferences(self, heap);
-    replaceDataStructurePointers(remappingTable);
+    replaceDataStructurePointers(self, remappingTable);
 
     uint64_t endTime = NanoTime();
     uint64_t duration = endTime - startTime;
@@ -422,6 +479,7 @@ void GcRecordFree(Thread * self, mirror::Object * object) {
     }
     writeQueueMutex.ExclusiveUnlock(self);
 
+    swapStateMutex.ExclusiveLock(self);
     if (objectOffsetMap.count(object) && objectSizeMap.count(object)) {
         freedObjects++;
         freedSize += objectSizeMap[object];
@@ -431,9 +489,10 @@ void GcRecordFree(Thread * self, mirror::Object * object) {
     else if (objectOffsetMap.count(object) || objectSizeMap.count(object)) {
         LOG(INFO) << "NIEL ERROR: object in one of the object maps but not the other";
     }
+    swapStateMutex.ExclusiveUnlock(self);
 }
 
-void InitIfNecessary() {
+void InitIfNecessary(Thread * self) {
     uint32_t curPid = getpid();
     if (curPid == pid) {
         return;
@@ -450,18 +509,27 @@ void InitIfNecessary() {
     // until the next time the PID changes
 
     pid = curPid;
+
+    swapStateMutex.ExclusiveLock(self);
     objectOffsetMap.clear();
     objectSizeMap.clear();
+    swapStateMutex.ExclusiveUnlock(self);
+
+    writeQueueMutex.ExclusiveLock(self);
     writeQueue.clear();
     writeSet.clear();
+    writeQueueMutex.ExclusiveUnlock(self);
 
     std::string packageName = getPackageName();
     std::string swapfilePath("/data/data/" + packageName + "/swapfile");
+
+    swapFileMutex.ExclusiveLock(self);
     openFile(swapfilePath, swapfile);
     swapfile.write((char *)&pid, 4);
     swapfile.flush();
-
     bool ioError = checkStreamError(swapfile, "after opening swapfile");
+    swapFileMutex.ExclusiveUnlock(self);
+
     if (ioError) {
         LOG(ERROR) << "NIEL not scheduling first WriteTask due to IO error (package name "
                   << packageName << ")";
@@ -473,11 +541,56 @@ void InitIfNecessary() {
     LOG(INFO) << "NIEL successfully initialized swap for package " << packageName;
 }
 
-void CompactSwapFile() {
+bool copyFile(const std::string & fromFileName, const std::string & toFileName) {
+    bool copyingError = false;
+    int removeRet = remove(toFileName.c_str());
+    if (removeRet < 0) {
+        LOG(INFO) << "NIEL error removing file (maybe expected): " << toFileName;
+    }
+
+    struct stat statBuf;
+    int ret = stat(fromFileName.c_str(), &statBuf);
+    if (ret < 0) {
+        copyingError = true;
+    }
+    mode_t mode = statBuf.st_mode;
+    int fileSize = statBuf.st_size;
+
+    int fromFileFd = open(fromFileName.c_str(), O_RDONLY);
+    if (fromFileFd < 0) {
+        copyingError = true;
+    }
+    int toFileFd = open(toFileName.c_str(), O_WRONLY | O_CREAT | O_EXCL);
+    if (toFileFd < 0) {
+        copyingError = true;
+    }
+    ret = sendfile(toFileFd, fromFileFd, NULL, fileSize);
+    if (ret < 0) {
+        copyingError = true;
+    }
+    ret = close(fromFileFd);
+    if (ret < 0) {
+        copyingError = true;
+    }
+    ret = close(toFileFd);
+    if (ret < 0) {
+        copyingError = true;
+    }
+
+    ret = chmod(toFileName.c_str(), mode);
+    if (ret < 0) {
+        copyingError = true;
+    }
+
+    return copyingError;
+}
+
+void CompactSwapFile(Thread * self) {
     LOG(INFO) << "NIEL compacting swap file";
 
     std::string swapfilePath("/data/data/" + getPackageName() + "/swapfile");
     std::string oldSwapfilePath("/data/data/" + getPackageName() + "/oldswapfile");
+    std::string newSwapfilePath("/data/data/" + getPackageName() + "/newswapfile");
     bool ioError = false;
 
     freedObjects = 0;
@@ -485,23 +598,28 @@ void CompactSwapFile() {
     swapfileObjects = 0;
     swapfileSize = 0;
 
+    swapFileMutex.ExclusiveLock(self);
     swapfile.close();
-    rename(swapfilePath.c_str(), oldSwapfilePath.c_str());
+    bool copyingError = copyFile(swapfilePath, oldSwapfilePath);
+    if (copyingError) {
+        LOG(ERROR) << "NIELERROR error copying swap file";
+    }
+    openFileAppend(swapfilePath, swapfile);
+    swapFileMutex.ExclusiveUnlock(self);
 
     std::fstream oldSwapfile;
     oldSwapfile.open(oldSwapfilePath, std::ios::binary | std::ios::in);
-
-    openFile(swapfilePath, swapfile);
-
-    std::map<void *, std::streampos> newObjectOffsetMap;
-
+    std::fstream newSwapfile;
+    openFile(newSwapfilePath, newSwapfile);
     if (checkStreamError(oldSwapfile, "in oldSwapfile before compaction")) {
         ioError = true;
     }
-    if (checkStreamError(swapfile, "in swapfile before compaction")) {
+    if (checkStreamError(newSwapfile, "in newSwapfile before compaction")) {
         ioError = true;
     }
 
+    std::map<void *, std::streampos> newObjectOffsetMap;
+    swapStateMutex.SharedLock(self);
     for (auto it = objectOffsetMap.begin(); it != objectOffsetMap.end(); it++) {
         if (ioError == true) {
             break;
@@ -515,8 +633,8 @@ void CompactSwapFile() {
         oldSwapfile.seekg(oldPos);
         oldSwapfile.read(objectData, objectSize);
 
-        std::streampos newPos = swapfile.tellp();
-        swapfile.write(objectData, objectSize);
+        std::streampos newPos = newSwapfile.tellp();
+        newSwapfile.write(objectData, objectSize);
         newObjectOffsetMap[object] = newPos;
         delete[] objectData;
 
@@ -526,14 +644,27 @@ void CompactSwapFile() {
         if (checkStreamError(oldSwapfile, "in oldSwapfile during compaction")) {
             ioError = true;
         }
-        if (checkStreamError(swapfile, "in swapfile during compaction")) {
+        if (checkStreamError(newSwapfile, "in newSwapfile during compaction")) {
             ioError = true;
         }
     }
-
-    objectOffsetMap = newObjectOffsetMap;
+    swapStateMutex.SharedUnlock(self);
 
     oldSwapfile.close();
+    newSwapfile.close();
+
+    swapStateMutex.ExclusiveLock(self);
+    objectOffsetMap = newObjectOffsetMap;
+    swapFileMutex.ExclusiveLock(self);
+    swapfile.close();
+    remove(swapfilePath.c_str());
+    rename(newSwapfilePath.c_str(), swapfilePath.c_str());
+    openFileAppend(swapfilePath, swapfile);
+    if (checkStreamError(swapfile, "reopening swapfile after compaction")) {
+        ioError = true;
+    }
+    swapFileMutex.ExclusiveUnlock(self);
+    swapStateMutex.ExclusiveUnlock(self);
 
     if (ioError) {
         LOG(INFO) << "NIEL detected errors while compacting swap file";
@@ -588,10 +719,13 @@ void CheckAndUpdate(gc::collector::GarbageCollector * gc, mirror::Object * objec
     object->UpdateWriteShiftRegister(wasWritten);
 }
 
-void validateSwapFile() {
+void validateSwapFile(Thread * self) {
     bool error = false;
 
     LOG(INFO) << "NIEL starting swap file validation";
+
+    swapFileMutex.ExclusiveLock(self);
+    swapStateMutex.SharedLock(self);
 
     if (objectOffsetMap.size() != objectSizeMap.size()) {
         LOG(INFO) << "NIEL ERROR: objectOffsetMap and objectSizeMap sizes differ";
@@ -641,6 +775,9 @@ void validateSwapFile() {
         error = true;
     }
 
+    swapStateMutex.SharedUnlock(self);
+    swapFileMutex.ExclusiveUnlock(self);
+
     if (error) {
         LOG(INFO) << "NIEL swap file validation detected errors";
     }
@@ -665,6 +802,10 @@ void openFile(const std::string & path, std::fstream & stream) {
         stream.close();
         stream.open(path, std::ios::binary | std::ios::in | std::ios::out | std::ios::trunc);
     }
+}
+
+void openFileAppend(const std::string & path, std::fstream & stream) {
+    stream.open(path, std::ios::binary | std::ios::in | std::ios::out | std::ios::ate);
 }
 
 bool checkStreamError(const std::ios & stream, const std::string & msg) {
