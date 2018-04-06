@@ -82,8 +82,8 @@ class CopyRefsVisitor {
 void Stub::PopulateFrom(mirror::Object * object) {
     ClearFlags();
     SetStubFlag();
+    SetObjectAddress(object);
     forwarding_address_ = 0;
-    padding_a_ = 0;
     padding_b_ = 0;
     padding_c_ = 0;
 
@@ -116,6 +116,7 @@ void Stub::RawDump() {
 
 void Stub::SemanticDump() {
     LOG(INFO) << "NIEL semantic dump for stub @" << this;
+    LOG(INFO) << "object_address_: " << std::hex << object_address_;
     LOG(INFO) << "forwarding_address_: " << std::hex << forwarding_address_;
     LOG(INFO) << "stub flag: "<< GetStubFlag();
     LOG(INFO) << "num_refs_: " << num_refs_;

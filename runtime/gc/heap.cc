@@ -2063,8 +2063,8 @@ HomogeneousSpaceCompactResult Heap::PerformHomogeneousSpaceCompact() {
   collector::GarbageCollector* collector;
   {
     ScopedSuspendAll ssa(__FUNCTION__);
-    niel::swap::ReplaceObjectsWithStubs(self, this);
-    niel::swap::PatchStubReferences(self, this);
+    niel::swap::CleanUpOnDemandSwaps(this);
+    niel::swap::SwapObjectsOut(self, this);
     uint64_t start_time = NanoTime();
     // Launch compaction.
     space::MallocSpace* to_space = main_space_backup_.release();

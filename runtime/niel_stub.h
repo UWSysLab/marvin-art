@@ -48,6 +48,14 @@ class Stub {
     void SetLargeObjectFlag();
     bool GetLargeObjectFlag();
 
+    mirror::Object * GetObjectAddress() {
+        return reinterpret_cast<mirror::Object *>(object_address_);
+    }
+
+    void SetObjectAddress(mirror::Object * obj) {
+        object_address_ = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(obj));
+    }
+
   private:
     // Copied from mirror/object.h
     static uint8_t GetBitsAtomic8(const std::atomic<uint8_t> & data, uint8_t offset,
@@ -63,7 +71,9 @@ class Stub {
     void SetStubFlag();
     void ClearFlags();
 
-    uint32_t padding_a_;
+    // If the object corresponding to this stub has been swapped in on-demand,
+    // holds its address. If not, is 0.
+    uint32_t object_address_;
 
     uint32_t forwarding_address_;
 

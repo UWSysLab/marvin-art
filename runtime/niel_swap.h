@@ -21,6 +21,8 @@ namespace niel {
 
 namespace swap {
 
+class Stub;
+
 void GcRecordFree(Thread * self, mirror::Object * object);
 
 /*
@@ -39,20 +41,17 @@ void CheckAndUpdate(gc::collector::GarbageCollector * gc, mirror::Object * objec
     SHARED_REQUIRES(Locks::mutator_lock_);
 
 /*
- * Delete objects that have been written to disk and replace them with stubs.
- */
-void ReplaceObjectsWithStubs(Thread * self, gc::Heap * heap) REQUIRES(Locks::mutator_lock_);
-
-/*
- * Walk all of the memory spaces and replace any references to swapped-out
- * objects with references to their corresponding stubs.
- */
-void PatchStubReferences(Thread * self, gc::Heap * heap) REQUIRES(Locks::mutator_lock_);
-
-/*
  * Swap all live objects in the swap file back into memory.
  */
 void SwapObjectsIn(gc::Heap * heap) REQUIRES(Locks::mutator_lock_);
+
+/*
+ * Swap all objects in the swapOutQueue out to disk by replacing them with
+ * stubs, freeing them from memory, patching references to point to the stubs
+ * rather than the objects, and remapping the swap data structures to use
+ * pointers to the stubs.
+ */
+void SwapObjectsOut(Thread * self, gc::Heap * heap) REQUIRES(Locks::mutator_lock_);
 
 /*
  * Called by semi-space GC to tell us where an object is moving.
@@ -64,6 +63,21 @@ void RecordForwardedObject(Thread * self, mirror::Object * obj, mirror::Object *
  * semi-space GC.
  */
 void SemiSpaceUpdateDataStructures(Thread * self);
+
+/*
+ * Swaps in an object on-demand. Installs a pointer to the object in the stub
+ * so that method calls can be redirected to the object until references are
+ * patched in CleanUpOnDemandSwaps().
+ */
+void SwapInOnDemand(Stub * stub) SHARED_REQUIRES(Locks::mutator_lock_);
+
+/*
+ * Cleans up state associated with objects that were swapped in on-demand by
+ * patching references to point to the objects rather than the stubs, remapping
+ * the swap data structures to use the object pointers instead of the stub
+ * pointers, and freeing the stubs.
+ */
+void CleanUpOnDemandSwaps(gc::Heap * heap) REQUIRES(Locks::mutator_lock_);
 
 } // namespace swap
 } // namespace niel

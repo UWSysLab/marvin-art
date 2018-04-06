@@ -40,6 +40,14 @@ gc::TaskProcessor * getTaskProcessorChecked();
 void dumpObject(mirror::Object * obj);
 
 /*
+ * Allocates space for the object in memory and copies the object from the swap
+ * file into memory.
+ */
+mirror::Object * swapInObject(Thread * self, gc::Heap * heap, Stub * stub,
+                              std::streampos objOffset, size_t objSize)
+        SHARED_REQUIRES(Locks::mutator_lock_);
+
+/*
  * For each key-value pair (a,b) in addrTable, replaces any key-value pair
  * (a,c) in objectOffsetMap or objectSizeMap with the new entry (b,c).
  */
@@ -59,8 +67,15 @@ bool copyFile(const std::string & fromFileName, const std::string & toFileName);
  */
 void validateSwapFile(Thread * self);
 
+/*
+ * Walk all of the memory spaces and replace any references to swapped-out
+ * objects with references to their corresponding stubs.
+ */
+void patchStubReferences(Thread * self, gc::Heap * heap) REQUIRES(Locks::mutator_lock_);
+
 /* Variables */
 Mutex writeQueueMutex("WriteQueueMutex", kLoggingLock);
+Mutex swappedInSetMutex("SwappedInSetMutex", kLoggingLock);
 ReaderWriterMutex swapStateMutex("SwapStateMutex", kDefaultMutexLevel);
 // Holding the swapFileMutex while reading the swap file always guarantees that
 // reads return valid data, and it guarantees that reads reflect the latest
@@ -89,6 +104,9 @@ std::map<void *, size_t> objectSizeMap;
 // Locked by writeQueueMutex
 std::vector<mirror::Object *> writeQueue;
 std::set<mirror::Object *> writeSet; // prevents duplicate entries in writeQueue
+
+// Locked by swappedInSetMutex
+std::set<Stub *> swappedInSet;
 
 class WriteTask : public gc::HeapTask {
   public:
@@ -296,6 +314,10 @@ void PatchCallback(void * start, void * end ATTRIBUTE_UNUSED, size_t num_bytes,
     mirror::Object * obj = (mirror::Object *)start;
     if (obj->GetStubFlag()) {
         Stub * stub = (Stub *)obj;
+        mirror::Object * swappedInObj = stub->GetObjectAddress();
+        if (remappingTable.count(swappedInObj)) {
+            stub->SetObjectAddress((mirror::Object *)remappingTable[swappedInObj]);
+        }
         for (int i = 0; i < stub->GetNumRefs(); i++) {
             mirror::Object * ref = stub->GetReference(i);
             if (remappingTable.count(ref)) {
@@ -310,7 +332,7 @@ void PatchCallback(void * start, void * end ATTRIBUTE_UNUSED, size_t num_bytes,
     }
 }
 
-void PatchStubReferences(Thread * self, gc::Heap * heap) {
+void patchStubReferences(Thread * self, gc::Heap * heap) {
     LOG(INFO) << "NIEL start patching stub references";
     uint64_t startTime = NanoTime();
 
@@ -321,8 +343,6 @@ void PatchStubReferences(Thread * self, gc::Heap * heap) {
     rosAllocSpace->Walk(&PatchCallback, nullptr);
 
     replaceDataStructurePointers(self, remappingTable);
-
-    remappingTable.clear();
 
     uint64_t endTime = NanoTime();
     uint64_t duration = endTime - startTime;
@@ -348,7 +368,7 @@ void replaceDataStructurePointers(Thread * self, const std::map<void *, void *> 
     swapStateMutex.ExclusiveUnlock(self);
 }
 
-void ReplaceObjectsWithStubs(Thread * self, gc::Heap * heap) {
+void SwapObjectsOut(Thread * self, gc::Heap * heap) {
     while (!swapOutQueue.empty()) {
         mirror::Object * obj = swapOutQueue.front();
         if (obj->GetDirtyBit()) {
@@ -372,11 +392,15 @@ void ReplaceObjectsWithStubs(Thread * self, gc::Heap * heap) {
             stub->SetLargeObjectFlag();
         }
 
+        stub->SetObjectAddress(nullptr);
         heap->GetRosAllocSpace()->Free(self, obj);
 
         remappingTable[obj] = stub;
         swapOutQueue.pop();
     }
+
+    patchStubReferences(self, heap);
+    remappingTable.clear();
 }
 
 void RecordForwardedObject(Thread * self, mirror::Object * obj, mirror::Object * forwardAddress) {
@@ -392,6 +416,79 @@ void SemiSpaceUpdateDataStructures(Thread * self) {
     semiSpaceRemappingTable.clear();
 }
 
+mirror::Object * swapInObject(Thread * self, gc::Heap * heap, Stub * stub,
+                              std::streampos objOffset, size_t objSize) {
+    mirror::Object * newObj = nullptr;
+    if (stub->GetLargeObjectFlag()) {
+        //TODO: allocate in large object space
+    }
+    else {
+        //TODO: handle allocation failure like Heap::AllocObjectWithAllocator()
+        size_t bytesAllocated;
+        size_t usableSize;
+        size_t bytesTlBulkAllocated;
+        newObj = heap->GetRosAllocSpace()
+                     ->Alloc(self,
+                             objSize,
+                             &bytesAllocated,
+                             &usableSize,
+                             &bytesTlBulkAllocated);
+    }
+
+    if (newObj == nullptr) {
+        LOG(ERROR) << "NIELERROR failed to allocate object of size " << objSize
+                   << "; dumping stub";
+        stub->SemanticDump();
+    }
+    else {
+        swapFileMutex.ExclusiveLock(self);
+        std::streampos curPos = swapfile.tellp();
+        swapfile.seekg(objOffset);
+        swapfile.read((char *)newObj, objSize);
+        swapfile.seekg(curPos);
+        swapFileMutex.ExclusiveUnlock(self);
+
+        stub->CopyRefsInto(newObj);
+    }
+
+    return newObj;
+}
+
+//TODO: make sure obj doesn't get freed during GC as long as stub isn't freed,
+//      but is freed when stub is freed
+void SwapInOnDemand(Stub * stub) {
+    Thread * self = Thread::Current();
+
+    swapStateMutex.SharedLock(self);
+    std::streampos objOffset = objectOffsetMap[stub];
+    size_t objSize = objectSizeMap[stub];
+    swapStateMutex.SharedUnlock(self);
+
+    gc::Heap * heap = getHeapChecked();
+    mirror::Object * obj = swapInObject(self, heap, stub, objOffset, objSize);
+    stub->SetObjectAddress(obj);
+
+    swappedInSetMutex.ExclusiveLock(self);
+    swappedInSet.insert(stub);
+    swappedInSetMutex.ExclusiveUnlock(self);
+}
+
+void CleanUpOnDemandSwaps(gc::Heap * heap) REQUIRES(Locks::mutator_lock_) {
+    Thread * self = Thread::Current();
+
+    swappedInSetMutex.ExclusiveLock(self);
+    for (auto it = swappedInSet.begin(); it != swappedInSet.end(); it++) {
+        Stub * stub = *it;
+        remappingTable[stub] = stub->GetObjectAddress();
+        heap->GetRosAllocSpace()->Free(self, (mirror::Object *)stub);
+    }
+    swappedInSet.clear();
+    swappedInSetMutex.ExclusiveUnlock(self);
+
+    patchStubReferences(self, heap);
+    remappingTable.clear();
+}
+
 void SwapObjectsIn(gc::Heap * heap) {
     LOG(INFO) << "Start swapping objects back in";
     uint64_t startTime = NanoTime();
@@ -402,52 +499,19 @@ void SwapObjectsIn(gc::Heap * heap) {
         mirror::Object * obj = (mirror::Object *)it->first;
         if (obj->GetStubFlag()) {
             Stub * stub = (Stub *)obj;
+            std::streampos objOffset = objectOffsetMap[stub];
             size_t objSize = objectSizeMap[stub];
 
-            mirror::Object * newObj = nullptr;
-            if (stub->GetLargeObjectFlag()) {
-                //TODO: allocate in large object space
-            }
-            else {
-                //TODO: handle allocation failure like Heap::AllocObjectWithAllocator()
-                size_t bytesAllocated;
-                size_t usableSize;
-                size_t bytesTlBulkAllocated;
-                newObj = heap->GetRosAllocSpace()
-                             ->Alloc(self,
-                                     objSize,
-                                     &bytesAllocated,
-                                     &usableSize,
-                                     &bytesTlBulkAllocated);
-            }
-
-            if (newObj == nullptr) {
-                LOG(INFO) << "NIELERROR failed to allocate object of size " << objSize
-                          << "; dumping stub";
-                stub->SemanticDump();
-            }
-            else {
-                std::streampos objOffset = objectOffsetMap[stub];
-
-                swapFileMutex.ExclusiveLock(self);
-                std::streampos curPos = swapfile.tellp();
-                swapfile.seekg(objOffset);
-                swapfile.read((char *)newObj, objSize);
-                swapfile.seekg(curPos);
-                swapFileMutex.ExclusiveUnlock(self);
-
-                stub->CopyRefsInto(newObj);
-                dumpObject(newObj);
-
+            mirror::Object * newObj = swapInObject(self, heap, stub, objOffset, objSize);
+            if (newObj != nullptr) {
                 heap->GetRosAllocSpace()->Free(self, obj);
-
                 remappingTable[stub] = newObj;
             }
         }
     }
     swapStateMutex.SharedUnlock(self);
-    PatchStubReferences(self, heap);
-    replaceDataStructurePointers(self, remappingTable);
+    patchStubReferences(self, heap);
+    remappingTable.clear();
 
     uint64_t endTime = NanoTime();
     uint64_t duration = endTime - startTime;
@@ -827,6 +891,9 @@ class DumpObjectVisitor {
         std::string refString;
         if (ref == nullptr) {
             refString = "null";
+        }
+        else if (ref->GetStubFlag()) {
+            refString = "stub";
         }
         else if (ref->GetClass() == nullptr) {
             refString = "null class";
