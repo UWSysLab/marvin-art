@@ -5,6 +5,7 @@
 #include "gc/task_processor.h"
 #include "mirror/object.h"
 #include "mirror/object-inl.h"
+#include "niel_scoped_timer.h"
 #include "niel_stub-inl.h"
 #include "runtime.h"
 
@@ -333,8 +334,7 @@ void PatchCallback(void * start, void * end ATTRIBUTE_UNUSED, size_t num_bytes,
 }
 
 void patchStubReferences(Thread * self, gc::Heap * heap) {
-    LOG(INFO) << "NIEL start patching stub references";
-    uint64_t startTime = NanoTime();
+    ScopedTimer timer("patching stub references");
 
     gc::space::LargeObjectSpace * largeObjectSpace = heap->GetLargeObjectsSpace();
     largeObjectSpace->Walk(&PatchCallback, nullptr);
@@ -343,10 +343,6 @@ void patchStubReferences(Thread * self, gc::Heap * heap) {
     rosAllocSpace->Walk(&PatchCallback, nullptr);
 
     replaceDataStructurePointers(self, remappingTable);
-
-    uint64_t endTime = NanoTime();
-    uint64_t duration = endTime - startTime;
-    LOG(INFO) << "NIEL patching stub references took " << PrettyDuration(duration);
 }
 
 //TODO: figure out whether it's better to grab the lock once or keep grabbing
@@ -371,6 +367,8 @@ void replaceDataStructurePointers(Thread * self, const std::map<void *, void *> 
 void SwapObjectsOut(Thread * self, gc::Heap * heap) {
     while (!swapOutQueue.empty()) {
         mirror::Object * obj = swapOutQueue.front();
+        CHECK(   heap->GetRosAllocSpace()->Contains(obj)
+              || heap->GetLargeObjectsSpace()->Contains(obj));
         if (obj->GetDirtyBit()) {
             return;
         }
@@ -385,6 +383,8 @@ void SwapObjectsOut(Thread * self, gc::Heap * heap) {
                                                  &bytes_allocated,
                                                  &usable_size,
                                                  &bytes_tl_bulk_allocated);
+        CHECK(stubData != nullptr);
+
         Stub * stub = (Stub *)stubData;
         stub->PopulateFrom(obj);
 
@@ -418,6 +418,8 @@ void SemiSpaceUpdateDataStructures(Thread * self) {
 
 mirror::Object * swapInObject(Thread * self, gc::Heap * heap, Stub * stub,
                               std::streampos objOffset, size_t objSize) {
+    CHECK(stub->GetObjectAddress() == nullptr);
+
     mirror::Object * newObj = nullptr;
     if (stub->GetLargeObjectFlag()) {
         //TODO: allocate in large object space
@@ -434,22 +436,17 @@ mirror::Object * swapInObject(Thread * self, gc::Heap * heap, Stub * stub,
                              &usableSize,
                              &bytesTlBulkAllocated);
     }
+    CHECK(newObj != nullptr);
 
-    if (newObj == nullptr) {
-        LOG(ERROR) << "NIELERROR failed to allocate object of size " << objSize
-                   << "; dumping stub";
-        stub->SemanticDump();
-    }
-    else {
-        swapFileMutex.ExclusiveLock(self);
-        std::streampos curPos = swapfile.tellp();
-        swapfile.seekg(objOffset);
-        swapfile.read((char *)newObj, objSize);
-        swapfile.seekg(curPos);
-        swapFileMutex.ExclusiveUnlock(self);
+    swapFileMutex.ExclusiveLock(self);
+    std::streampos curPos = swapfile.tellp();
+    swapfile.seekg(objOffset);
+    swapfile.read((char *)newObj, objSize);
+    swapfile.seekg(curPos);
+    swapFileMutex.ExclusiveUnlock(self);
 
-        stub->CopyRefsInto(newObj);
-    }
+    stub->CopyRefsInto(newObj);
+    stub->SetObjectAddress(newObj);
 
     return newObj;
 }
@@ -457,6 +454,8 @@ mirror::Object * swapInObject(Thread * self, gc::Heap * heap, Stub * stub,
 //TODO: make sure obj doesn't get freed during GC as long as stub isn't freed,
 //      but is freed when stub is freed
 void SwapInOnDemand(Stub * stub) {
+    CHECK(getHeapChecked()->GetRosAllocSpace()->Contains((mirror::Object *)stub));
+
     Thread * self = Thread::Current();
 
     swapStateMutex.SharedLock(self);
@@ -465,8 +464,7 @@ void SwapInOnDemand(Stub * stub) {
     swapStateMutex.SharedUnlock(self);
 
     gc::Heap * heap = getHeapChecked();
-    mirror::Object * obj = swapInObject(self, heap, stub, objOffset, objSize);
-    stub->SetObjectAddress(obj);
+    swapInObject(self, heap, stub, objOffset, objSize);
 
     swappedInSetMutex.ExclusiveLock(self);
     swappedInSet.insert(stub);
@@ -479,6 +477,8 @@ void CleanUpOnDemandSwaps(gc::Heap * heap) REQUIRES(Locks::mutator_lock_) {
     swappedInSetMutex.ExclusiveLock(self);
     for (auto it = swappedInSet.begin(); it != swappedInSet.end(); it++) {
         Stub * stub = *it;
+        CHECK(heap->GetRosAllocSpace()->Contains((mirror::Object *)stub));
+
         remappingTable[stub] = stub->GetObjectAddress();
         heap->GetRosAllocSpace()->Free(self, (mirror::Object *)stub);
     }
@@ -490,8 +490,8 @@ void CleanUpOnDemandSwaps(gc::Heap * heap) REQUIRES(Locks::mutator_lock_) {
 }
 
 void SwapObjectsIn(gc::Heap * heap) {
-    LOG(INFO) << "Start swapping objects back in";
-    uint64_t startTime = NanoTime();
+    ScopedTimer timer("swapping objects back in");
+    CHECK_EQ(remappingTable.size(), 0u);
 
     Thread * self = Thread::Current();
     swapStateMutex.SharedLock(self);
@@ -499,23 +499,19 @@ void SwapObjectsIn(gc::Heap * heap) {
         mirror::Object * obj = (mirror::Object *)it->first;
         if (obj->GetStubFlag()) {
             Stub * stub = (Stub *)obj;
+            CHECK(heap->GetRosAllocSpace()->Contains((mirror::Object *)stub));
+
             std::streampos objOffset = objectOffsetMap[stub];
             size_t objSize = objectSizeMap[stub];
 
             mirror::Object * newObj = swapInObject(self, heap, stub, objOffset, objSize);
-            if (newObj != nullptr) {
-                heap->GetRosAllocSpace()->Free(self, obj);
-                remappingTable[stub] = newObj;
-            }
+            heap->GetRosAllocSpace()->Free(self, obj);
+            remappingTable[stub] = newObj;
         }
     }
     swapStateMutex.SharedUnlock(self);
     patchStubReferences(self, heap);
     remappingTable.clear();
-
-    uint64_t endTime = NanoTime();
-    uint64_t duration = endTime - startTime;
-    LOG(INFO) << "NIEL swapping objects back in took " << PrettyDuration(duration);
 }
 
 gc::Heap * getHeapChecked() {
@@ -551,7 +547,7 @@ void GcRecordFree(Thread * self, mirror::Object * object) {
         objectSizeMap.erase(object);
     }
     else if (objectOffsetMap.count(object) || objectSizeMap.count(object)) {
-        LOG(INFO) << "NIEL ERROR: object in one of the object maps but not the other";
+        LOG(ERROR) << "NIELERROR: object in one of the object maps but not the other";
     }
     swapStateMutex.ExclusiveUnlock(self);
 }
@@ -564,8 +560,8 @@ void InitIfNecessary(Thread * self) {
 
     gc::TaskProcessor * taskProcessor = getTaskProcessorChecked();
     if (taskProcessor == nullptr || !taskProcessor->IsRunning()) {
-        LOG(ERROR) << "NIEL failed to init swap since heap's TaskProcessor is null or not ready"
-                   << " (or heap is null)";
+        LOG(ERROR) << "NIELERROR failed to init swap since heap's TaskProcessor is null or not "
+                   << "ready (or heap is null)";
         return;
     }
 
@@ -595,8 +591,8 @@ void InitIfNecessary(Thread * self) {
     swapFileMutex.ExclusiveUnlock(self);
 
     if (ioError) {
-        LOG(ERROR) << "NIEL not scheduling first WriteTask due to IO error (package name "
-                  << packageName << ")";
+        LOG(ERROR) << "NIELERROR not scheduling first WriteTask due to IO error (package name "
+                   << packageName << ")";
         return;
     }
 
@@ -792,7 +788,7 @@ void validateSwapFile(Thread * self) {
     swapStateMutex.SharedLock(self);
 
     if (objectOffsetMap.size() != objectSizeMap.size()) {
-        LOG(INFO) << "NIEL ERROR: objectOffsetMap and objectSizeMap sizes differ";
+        LOG(ERROR) << "NIELERROR: objectOffsetMap and objectSizeMap sizes differ";
         error = true;
     }
 
@@ -806,7 +802,7 @@ void validateSwapFile(Thread * self) {
         std::streampos offset = it->second;
 
         if (!objectSizeMap.count(object)) {
-            LOG(INFO) << "NIEL ERROR: objectSizeMap does not contain object " << object;
+            LOG(ERROR) << "NIELERROR: objectSizeMap does not contain object " << object;
             error = true;
         }
 
@@ -823,13 +819,13 @@ void validateSwapFile(Thread * self) {
         }
 
         if (objectSize < 16) {
-            LOG(INFO) << "NIEL ERROR: object size " << objectSize << " is too small";
+            LOG(ERROR) << "NIELERROR: object size " << objectSize << " is too small";
             error = true;
         }
 
         int * padding = (int *)&objectData[12];
         if (*padding != MAGIC_NUM) {
-            LOG(INFO) << "NIEL ERROR: object padding does not match magic num";
+            LOG(ERROR) << "NIELERROR: object padding does not match magic num";
             error = true;
         }
     }
@@ -843,7 +839,7 @@ void validateSwapFile(Thread * self) {
     swapFileMutex.ExclusiveUnlock(self);
 
     if (error) {
-        LOG(INFO) << "NIEL swap file validation detected errors";
+        LOG(ERROR) << "NIELERROR swap file validation detected errors";
     }
     else {
         LOG(INFO) << "NIEL swap file validation successful";
@@ -875,7 +871,7 @@ void openFileAppend(const std::string & path, std::fstream & stream) {
 bool checkStreamError(const std::ios & stream, const std::string & msg) {
     bool error = !stream;
     if (error) {
-        LOG(ERROR) << "NIEL stream error: " << msg << " (" << stream.good() << " "
+        LOG(ERROR) << "NIELERROR stream error: " << msg << " (" << stream.good() << " "
                    << stream.eof() << " " << stream.fail() << " " << stream.bad() << ")";
     }
     return error;
