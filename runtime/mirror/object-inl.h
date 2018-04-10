@@ -37,29 +37,6 @@
 #include "string-inl.h"
 #include "throwable.h"
 
-#include "niel_stub.h"
-#include "niel_swap.h"
-
-#define SWAP_PREAMBLE(func_name, ...) \
-if (GetStubFlag()) { \
-  niel::swap::Stub * stub = (niel::swap::Stub *)this; \
-  if (stub->GetObjectAddress() == nullptr) { \
-    niel::swap::SwapInOnDemand(stub); \
-  } \
-  return stub->GetObjectAddress()->func_name(__VA_ARGS__); \
-}
-
-#define SWAP_PREAMBLE_TEMPLATE(func_name, template_args, ...) \
-if (GetStubFlag()) { \
-  niel::swap::Stub * stub = (niel::swap::Stub *)this; \
-  if (stub->GetObjectAddress() == nullptr) { \
-    niel::swap::SwapInOnDemand(stub); \
-  } \
-  return stub->GetObjectAddress()->func_name<template_args>(__VA_ARGS__); \
-}
-
-#define GATHER_TEMPLATE_ARGS(...) __VA_ARGS__
-
 namespace art {
 namespace mirror {
 
@@ -1280,7 +1257,7 @@ inline void Object::ClearDirtyBit() {
   ClearBitsAtomic8(x_flags_, 0, 1, std::memory_order_acq_rel);
 }
 
-inline bool Object::GetStubFlag() {
+inline bool Object::GetStubFlag() const {
   return (bool)GetBitsAtomic8(x_flags_, 7, 1, std::memory_order_acquire);
 }
 
