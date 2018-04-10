@@ -38,6 +38,10 @@ void openFileAppend(const std::string & path, std::fstream & stream);
 bool checkStreamError(const std::ios & stream, const std::string & msg);
 gc::Heap * getHeapChecked();
 gc::TaskProcessor * getTaskProcessorChecked();
+void FreeFromRosAllocSpace(Thread * self, gc::Heap * heap, mirror::Object * obj)
+        SHARED_REQUIRES(Locks::mutator_lock_);
+void FreeFromLargeObjectSpace(Thread * self, gc::Heap * heap, mirror::Object * obj)
+        SHARED_REQUIRES(Locks::mutator_lock_);
 void dumpObject(mirror::Object * obj);
 
 /*
@@ -369,6 +373,16 @@ void replaceDataStructurePointers(Thread * self, const std::map<void *, void *> 
     swapStateMutex.ExclusiveUnlock(self);
 }
 
+void FreeFromRosAllocSpace(Thread * self, gc::Heap * heap, mirror::Object * obj) {
+    heap->GetRosAllocSpace()->GetLiveBitmap()->Clear(obj);
+    heap->GetRosAllocSpace()->Free(self, obj);
+}
+
+void FreeFromLargeObjectSpace(Thread * self, gc::Heap * heap, mirror::Object * obj) {
+    heap->GetLargeObjectsSpace()->GetLiveBitmap()->Clear(obj);
+    heap->GetLargeObjectsSpace()->Free(self, obj);
+}
+
 void SwapObjectsOut(Thread * self, gc::Heap * heap) {
     swappingOutObjects = true;
     for (auto it = swapOutSet.begin(); it != swapOutSet.end(); it++) {
@@ -398,10 +412,10 @@ void SwapObjectsOut(Thread * self, gc::Heap * heap) {
 
         if (heap->GetLargeObjectsSpace()->Contains(obj)) {
             stub->SetLargeObjectFlag();
-            heap->GetLargeObjectsSpace()->Free(self, obj);
+            FreeFromLargeObjectSpace(self, heap, obj);
         }
         else {
-            heap->GetRosAllocSpace()->Free(self, obj);
+            FreeFromRosAllocSpace(self, heap, obj);
         }
 
         remappingTable[obj] = stub;
@@ -432,7 +446,16 @@ mirror::Object * swapInObject(Thread * self, gc::Heap * heap, Stub * stub,
 
     mirror::Object * newObj = nullptr;
     if (stub->GetLargeObjectFlag()) {
-        //TODO: allocate in large object space
+        //TODO: handle allocation failure like Heap::AllocObjectWithAllocator()
+        size_t bytesAllocated;
+        size_t usableSize;
+        size_t bytesTlBulkAllocated;
+        newObj = heap->GetLargeObjectsSpace()
+                     ->Alloc(self,
+                             objSize,
+                             &bytesAllocated,
+                             &usableSize,
+                             &bytesTlBulkAllocated);
     }
     else {
         //TODO: handle allocation failure like Heap::AllocObjectWithAllocator()
@@ -491,7 +514,7 @@ void CleanUpOnDemandSwaps(gc::Heap * heap) REQUIRES(Locks::mutator_lock_) {
         CHECK(heap->GetRosAllocSpace()->Contains((mirror::Object *)stub));
 
         remappingTable[stub] = stub->GetObjectAddress();
-        heap->GetRosAllocSpace()->Free(self, (mirror::Object *)stub);
+        FreeFromRosAllocSpace(self, heap, (mirror::Object *)stub);
     }
     swappedInSet.clear();
     swappedInSetMutex.ExclusiveUnlock(self);
@@ -518,7 +541,7 @@ void SwapObjectsIn(gc::Heap * heap) {
             size_t objSize = objectSizeMap[stub];
 
             mirror::Object * newObj = swapInObject(self, heap, stub, objOffset, objSize);
-            heap->GetRosAllocSpace()->Free(self, obj);
+            FreeFromRosAllocSpace(self, heap, obj);
             remappingTable[stub] = newObj;
         }
     }
