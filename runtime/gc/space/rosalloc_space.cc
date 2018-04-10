@@ -191,6 +191,7 @@ MallocSpace* RosAllocSpace::CreateInstance(MemMap* mem_map, const std::string& n
 }
 
 size_t RosAllocSpace::Free(Thread* self, mirror::Object* ptr) {
+  niel::swap::GcRecordFree(self, ptr);
   if (kDebugSpaces) {
     CHECK(ptr != nullptr);
     CHECK(Contains(ptr)) << "Free (" << ptr << ") not in bounds of heap " << *this;

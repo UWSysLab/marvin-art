@@ -89,7 +89,9 @@ Mutex swapFileMutex("SwapFileMutex", kLoggingLock);
 uint32_t pid = 0;
 std::map<void *, void *> remappingTable;
 std::map<void *, void *> semiSpaceRemappingTable; //TODO: combine with normal remapping table?
-std::queue<mirror::Object *> swapOutQueue;
+std::set<mirror::Object *> swapOutSet;
+bool swappingOutObjects = false;
+bool doingSwapInCleanup = false;
 int freedObjects = 0;
 long freedSize = 0;
 int swapfileObjects = 0;
@@ -353,6 +355,9 @@ void replaceDataStructurePointers(Thread * self, const std::map<void *, void *> 
         void * originalPtr = it->first;
         void * newPtr = it->second;
 
+        CHECK_NE(objectOffsetMap.count(originalPtr), 0u);
+        CHECK_NE(objectSizeMap.count(originalPtr), 0u);
+
         auto oomIt = objectOffsetMap.find(originalPtr);
         objectOffsetMap[newPtr] = oomIt->second;
         objectOffsetMap.erase(oomIt);
@@ -365,8 +370,9 @@ void replaceDataStructurePointers(Thread * self, const std::map<void *, void *> 
 }
 
 void SwapObjectsOut(Thread * self, gc::Heap * heap) {
-    while (!swapOutQueue.empty()) {
-        mirror::Object * obj = swapOutQueue.front();
+    swappingOutObjects = true;
+    for (auto it = swapOutSet.begin(); it != swapOutSet.end(); it++) {
+        mirror::Object * obj = *it;
         CHECK(   heap->GetRosAllocSpace()->Contains(obj)
               || heap->GetLargeObjectsSpace()->Contains(obj));
         if (obj->GetDirtyBit()) {
@@ -388,19 +394,23 @@ void SwapObjectsOut(Thread * self, gc::Heap * heap) {
         Stub * stub = (Stub *)stubData;
         stub->PopulateFrom(obj);
 
+        stub->SetObjectAddress(nullptr);
+
         if (heap->GetLargeObjectsSpace()->Contains(obj)) {
             stub->SetLargeObjectFlag();
+            heap->GetLargeObjectsSpace()->Free(self, obj);
+        }
+        else {
+            heap->GetRosAllocSpace()->Free(self, obj);
         }
 
-        stub->SetObjectAddress(nullptr);
-        heap->GetRosAllocSpace()->Free(self, obj);
-
         remappingTable[obj] = stub;
-        swapOutQueue.pop();
     }
 
     patchStubReferences(self, heap);
     remappingTable.clear();
+    swapOutSet.clear();
+    swappingOutObjects = false;
 }
 
 void RecordForwardedObject(Thread * self, mirror::Object * obj, mirror::Object * forwardAddress) {
@@ -472,6 +482,7 @@ void SwapInOnDemand(Stub * stub) {
 }
 
 void CleanUpOnDemandSwaps(gc::Heap * heap) REQUIRES(Locks::mutator_lock_) {
+    doingSwapInCleanup = true;
     Thread * self = Thread::Current();
 
     swappedInSetMutex.ExclusiveLock(self);
@@ -487,12 +498,14 @@ void CleanUpOnDemandSwaps(gc::Heap * heap) REQUIRES(Locks::mutator_lock_) {
 
     patchStubReferences(self, heap);
     remappingTable.clear();
+    doingSwapInCleanup = false;
 }
 
 void SwapObjectsIn(gc::Heap * heap) {
     ScopedTimer timer("swapping objects back in");
     CHECK_EQ(remappingTable.size(), 0u);
 
+    doingSwapInCleanup = true;
     Thread * self = Thread::Current();
     swapStateMutex.SharedLock(self);
     for (auto it = objectOffsetMap.begin(); it != objectOffsetMap.end(); it++) {
@@ -512,6 +525,7 @@ void SwapObjectsIn(gc::Heap * heap) {
     swapStateMutex.SharedUnlock(self);
     patchStubReferences(self, heap);
     remappingTable.clear();
+    doingSwapInCleanup = false;
 }
 
 gc::Heap * getHeapChecked() {
@@ -531,6 +545,19 @@ gc::TaskProcessor * getTaskProcessorChecked() {
 }
 
 void GcRecordFree(Thread * self, mirror::Object * object) {
+    /*
+     * The correctness of this check depends on upon several assumptions:
+     * 1) Only the garbage collectors and my swapping code call Free() on the
+     *    RosAlloc space and large object space.
+     * 2) The garbage collectors never run concurrently with any swapping
+     *    methods that free objects or stubs as part of swapping (currently,
+     *    these methods are SwapObjectsOut(), SwapObjectsIn(), and
+     *    CleanUpOnDemandSwaps()).
+     */
+    if (swappingOutObjects || doingSwapInCleanup) {
+        return;
+    }
+
     writeQueueMutex.ExclusiveLock(self);
     auto writeQueuePos = std::find(writeQueue.begin(), writeQueue.end(), object);
     if (writeQueuePos != writeQueue.end()) {
@@ -550,6 +577,10 @@ void GcRecordFree(Thread * self, mirror::Object * object) {
         LOG(ERROR) << "NIELERROR: object in one of the object maps but not the other";
     }
     swapStateMutex.ExclusiveUnlock(self);
+
+    if (swapOutSet.count(object)) {
+        swapOutSet.erase(object);
+    }
 }
 
 void InitIfNecessary(Thread * self) {
