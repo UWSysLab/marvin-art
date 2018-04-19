@@ -2,6 +2,7 @@
 
 #include "gc/collector/garbage_collector.h"
 #include "gc/heap.h"
+#include "gc/space/space-inl.h"
 #include "gc/task_processor.h"
 #include "mirror/object.h"
 #include "mirror/object-inl.h"
@@ -36,6 +37,7 @@ std::string getPackageName();
 void openFile(const std::string & path, std::fstream & stream);
 void openFileAppend(const std::string & path, std::fstream & stream);
 bool checkStreamError(const std::ios & stream, const std::string & msg);
+bool isAppBlacklisted();
 gc::Heap * getHeapChecked();
 gc::TaskProcessor * getTaskProcessorChecked();
 void FreeFromRosAllocSpace(Thread * self, gc::Heap * heap, mirror::Object * obj)
@@ -147,18 +149,9 @@ class WriteTask : public gc::HeapTask {
             }
             writeQueueMutex.ExclusiveUnlock(self);
 
-            bool objectInSpace = false;
-            gc::Heap * heap = Runtime::Current()->GetHeap();
-            for (auto & space : heap->GetContinuousSpaces()) {
-                if (space->Contains(object)) {
-                    objectInSpace = true;
-                }
-            }
-            for (auto & space : heap->GetDiscontinuousSpaces()) {
-                if (space->Contains(object)) {
-                    objectInSpace = true;
-                }
-            }
+            gc::Heap * heap = getHeapChecked();
+            bool objectInSpace = (   heap->GetRosAllocSpace()->Contains(object)
+                                  || heap->GetLargeObjectsSpace()->Contains(object));
             if (!objectInSpace) {
                 numSpacelessObjects++;
             }
@@ -606,6 +599,18 @@ void GcRecordFree(Thread * self, mirror::Object * object) {
     }
 }
 
+bool isAppBlacklisted(const std::string & packageName) {
+    std::set<std::string> blacklist;
+    blacklist.insert("droid.launcher3");
+
+    for (auto it = blacklist.begin(); it != blacklist.end(); it++) {
+        if (packageName.find(*it) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void InitIfNecessary(Thread * self) {
     uint32_t curPid = getpid();
     if (curPid == pid) {
@@ -636,6 +641,12 @@ void InitIfNecessary(Thread * self) {
 
     std::string packageName = getPackageName();
     std::string swapfilePath("/data/data/" + packageName + "/swapfile");
+
+    if (isAppBlacklisted(packageName)) {
+        LOG(ERROR) << "NIELERROR stopping swap initialization due to blacklisted app"
+                   << " (package name " << packageName << ")";
+        return;
+    }
 
     swapFileMutex.ExclusiveLock(self);
     openFile(swapfilePath, swapfile);
@@ -811,7 +822,8 @@ void CheckAndUpdate(gc::collector::GarbageCollector * gc, mirror::Object * objec
     //uint8_t rsrVal = object->GetReadShiftRegister();
     uint8_t wsrVal = object->GetWriteShiftRegister();
 
-    if (objectSize > 200 && wsrVal < 2 && !wasWritten && object->GetDirtyBit()) {
+    if (objectSize > 200 && wsrVal < 2 && !wasWritten && object->GetDirtyBit()
+            && !object->GetNoSwapFlag()) {
         Thread * self = Thread::Current();
         writeQueueMutex.ExclusiveLock(self);
         if (!writeSet.count(object)) {

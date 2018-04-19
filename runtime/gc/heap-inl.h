@@ -57,6 +57,12 @@ inline mirror::Object* Heap::AllocObjectWithAllocator(Thread* self,
     obj = AllocLargeObject<kInstrumented, PreFenceVisitor>(self, &klass, byte_count,
                                                            pre_fence_visitor);
     if (obj != nullptr) {
+      // Added by Niel: we avoid swapping out LOS objects created by the zygote because
+      // they might be referenced from the zygote space, and there's no easy way of
+      // walking the zygote space.
+      if (Runtime::Current()->IsZygote()) {
+        obj->SetNoSwapFlag();
+      }
       return obj;
     } else {
       // There should be an OOM exception, since we are retrying, clear it.

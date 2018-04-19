@@ -27,6 +27,7 @@ class StubPopulateVisitor {
                     MemberOffset offset,
                     bool is_static ATTRIBUTE_UNUSED) const
             SHARED_REQUIRES(Locks::mutator_lock_) {
+        CHECK_LT((int)cur_ref_, stub_->GetNumRefs());
         stub_->SetReference(cur_ref_, obj->GetFieldObject<mirror::Object>(offset));
         cur_ref_++;
     }

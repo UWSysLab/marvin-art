@@ -195,6 +195,14 @@ class AddToReferenceArrayVisitor {
     if (ref != nullptr && mod_union_table_->ShouldAddReference(ref)) {
       // Push the adddress of the reference.
       references_->push_back(ref_ptr);
+      // Added by Niel: we avoid swapping out any object that has a reference stored in a
+      // mod-union table because I don't know how to take out that reference and replace it
+      // when patching references.
+      //
+      // TODO: Figure out if it's possible to take out and replace references in the mod-union
+      // table, and if so, implement patching stub references in the mod-union table instead of
+      // declaring every object referenced by it unswappable.
+      ref->SetNoSwapFlag();
     }
   }
 

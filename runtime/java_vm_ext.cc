@@ -523,6 +523,12 @@ jobject JavaVMExt::AddGlobalRef(Thread* self, mirror::Object* obj) {
   if (obj == nullptr) {
     return nullptr;
   }
+  // Added by Niel: we avoid swapping out objects to which there are global references
+  // (the alternative is to modify the IndirectRef to point to the stub, but I'm not sure
+  // how feasible that is or if that will actually work). Right now, if a global reference
+  // is created for an object, that object is left permanently unswappable, but it might
+  // be possible to re-enable swapping for an object if all global references are gone.
+  obj->SetNoSwapFlag();
   WriterMutexLock mu(self, globals_lock_);
   IndirectRef ref = globals_.Add(IRT_FIRST_SEGMENT, obj);
   return reinterpret_cast<jobject>(ref);
@@ -532,6 +538,9 @@ jweak JavaVMExt::AddWeakGlobalRef(Thread* self, mirror::Object* obj) {
   if (obj == nullptr) {
     return nullptr;
   }
+  // Added by Niel: for now, we also avoid swapping out objects to which there are weak
+  // global references.
+  obj->SetNoSwapFlag();
   MutexLock mu(self, weak_globals_lock_);
   while (UNLIKELY(!MayAccessWeakGlobals(self))) {
     weak_globals_add_condition_.WaitHoldingLocks(self);

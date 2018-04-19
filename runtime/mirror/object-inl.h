@@ -1261,6 +1261,13 @@ inline bool Object::GetStubFlag() const {
   return (bool)GetBitsAtomic8(x_flags_, 7, 1, std::memory_order_acquire);
 }
 
+inline bool Object::GetNoSwapFlag() const {
+  return (bool)GetBitsAtomic8(x_flags_, 2, 1, std::memory_order_acquire);
+}
+inline void Object::SetNoSwapFlag() {
+  SetBitsAtomic8(x_flags_, 2, 1, std::memory_order_acq_rel);
+}
+
 }  // namespace mirror
 }  // namespace art
 

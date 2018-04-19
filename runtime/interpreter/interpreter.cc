@@ -240,7 +240,12 @@ static std::ostream& operator<<(std::ostream& os, const InterpreterImplKind& rhs
   return os;
 }
 
-static constexpr InterpreterImplKind kInterpreterImplKind = kMterpImplKind;
+// Changed by Niel: we use the switch interpreter to ensure that all array accesses
+// go through the Array and Object class methods, instead of directly executing loads
+// and stores on the underlying memory, so that the swap hook preambles of these
+// methods can check if the object is actually a stub.
+static constexpr InterpreterImplKind kInterpreterImplKind = kSwitchImplKind;
+//static constexpr InterpreterImplKind kInterpreterImplKind = kMterpImplKind;
 
 #if defined(__clang__)
 // Clang 3.4 fails to build the goto interpreter implementation.
