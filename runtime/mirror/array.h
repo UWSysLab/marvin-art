@@ -68,12 +68,15 @@ class MANAGED Array : public Object {
 
   void* GetRawData(size_t component_size, int32_t index)
       SHARED_REQUIRES(Locks::mutator_lock_) {
+    SWAP_PREAMBLE(GetRawData, Array, component_size, index)
     intptr_t data = reinterpret_cast<intptr_t>(this) + DataOffset(component_size).Int32Value() +
         + (index * component_size);
     return reinterpret_cast<void*>(data);
   }
 
-  const void* GetRawData(size_t component_size, int32_t index) const {
+  const void* GetRawData(size_t component_size, int32_t index) const
+      SHARED_REQUIRES(Locks::mutator_lock_) {
+    SWAP_PREAMBLE(GetRawData, Array, component_size, index)
     intptr_t data = reinterpret_cast<intptr_t>(this) + DataOffset(component_size).Int32Value() +
         + (index * component_size);
     return reinterpret_cast<void*>(data);
@@ -122,6 +125,7 @@ class MANAGED PrimitiveArray : public Array {
   T Get(int32_t i) ALWAYS_INLINE SHARED_REQUIRES(Locks::mutator_lock_);
 
   T GetWithoutChecks(int32_t i) ALWAYS_INLINE SHARED_REQUIRES(Locks::mutator_lock_) {
+    SWAP_PREAMBLE(GetWithoutChecks, PrimitiveArray<T>, i)
     DCHECK(CheckIsValidIndex(i)) << "i=" << i << " length=" << GetLength();
     return GetData()[i];
   }

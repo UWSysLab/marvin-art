@@ -37,6 +37,7 @@ inline uint32_t Array::ClassSize(size_t pointer_size) {
 
 template<VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrierOption>
 inline size_t Array::SizeOf() {
+  SWAP_PREAMBLE_TEMPLATE(SizeOf, Array, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption), )
   // This is safe from overflow because the array was already allocated, so we know it's sane.
   size_t component_size_shift = GetClass<kVerifyFlags, kReadBarrierOption>()->
       template GetComponentSizeShift<kReadBarrierOption>();
@@ -240,6 +241,7 @@ inline void PrimitiveArray<T>::Set(int32_t i, T value) {
 template<typename T>
 template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVerifyFlags>
 inline void PrimitiveArray<T>::SetWithoutChecks(int32_t i, T value) {
+  SWAP_PREAMBLE_TEMPLATE(SetWithoutChecks, PrimitiveArray<T>, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), i, value)
   if (kCheckTransaction) {
     DCHECK_EQ(kTransactionActive, Runtime::Current()->IsActiveTransaction());
   }
@@ -276,6 +278,7 @@ static inline void ArrayForwardCopy(T* d, const T* s, int32_t count) {
 template<class T>
 inline void PrimitiveArray<T>::Memmove(int32_t dst_pos, PrimitiveArray<T>* src, int32_t src_pos,
                                        int32_t count) {
+  SWAP_PREAMBLE(Memmove, PrimitiveArray<T>, dst_pos, src, src_pos, count);
   if (UNLIKELY(count == 0)) {
     return;
   }
@@ -336,6 +339,7 @@ inline void PrimitiveArray<T>::Memmove(int32_t dst_pos, PrimitiveArray<T>* src, 
 template<class T>
 inline void PrimitiveArray<T>::Memcpy(int32_t dst_pos, PrimitiveArray<T>* src, int32_t src_pos,
                                       int32_t count) {
+  SWAP_PREAMBLE(Memcpy, PrimitiveArray<T>, dst_pos, src, src_pos, count);
   if (UNLIKELY(count == 0)) {
     return;
   }
@@ -372,6 +376,7 @@ inline void PrimitiveArray<T>::Memcpy(int32_t dst_pos, PrimitiveArray<T>* src, i
 
 template<typename T, VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrierOption>
 inline T PointerArray::GetElementPtrSize(uint32_t idx, size_t ptr_size) {
+  SWAP_PREAMBLE_TEMPLATE(GetElementPtrSize, PointerArray, GATHER_TEMPLATE_ARGS(T, kVerifyFlags, kReadBarrierOption), idx, ptr_size)
   // C style casts here since we sometimes have T be a pointer, or sometimes an integer
   // (for stack traces).
   if (ptr_size == 8) {
@@ -385,6 +390,7 @@ inline T PointerArray::GetElementPtrSize(uint32_t idx, size_t ptr_size) {
 
 template<bool kTransactionActive, bool kUnchecked>
 inline void PointerArray::SetElementPtrSize(uint32_t idx, uint64_t element, size_t ptr_size) {
+  SWAP_PREAMBLE_TEMPLATE(SetElementPtrSize, PointerArray, GATHER_TEMPLATE_ARGS(kTransactionActive, kUnchecked), idx, element, ptr_size)
   if (ptr_size == 8) {
     (kUnchecked ? down_cast<LongArray*>(static_cast<Object*>(this)) : AsLongArray())->
         SetWithoutChecks<kTransactionActive>(idx, element);
@@ -407,6 +413,7 @@ template <VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrierOption, 
 inline void PointerArray::Fixup(mirror::PointerArray* dest,
                                 size_t pointer_size,
                                 const Visitor& visitor) {
+  SWAP_PREAMBLE_TEMPLATE(Fixup, PointerArray, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption, Visitor), dest, pointer_size, visitor)
   for (size_t i = 0, count = GetLength(); i < count; ++i) {
     void* ptr = GetElementPtrSize<void*, kVerifyFlags, kReadBarrierOption>(i, pointer_size);
     void* new_ptr = visitor(ptr);
