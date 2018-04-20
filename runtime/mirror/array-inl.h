@@ -250,6 +250,8 @@ inline void PrimitiveArray<T>::SetWithoutChecks(int32_t i, T value) {
   }
   DCHECK(CheckIsValidIndex<kVerifyFlags>(i));
   GetData()[i] = value;
+  IncrWriteCounter();
+  SetDirtyBit();
 }
 // Backward copy where elements are of aligned appropriately for T. Count is in T sized units.
 // Copies are guaranteed not to tear when the sizeof T is less-than 64bit.
@@ -334,6 +336,8 @@ inline void PrimitiveArray<T>::Memmove(int32_t dst_pos, PrimitiveArray<T>* src, 
       }
     }
   }
+  IncrWriteCounter();
+  SetDirtyBit();
 }
 
 template<class T>
@@ -372,6 +376,8 @@ inline void PrimitiveArray<T>::Memcpy(int32_t dst_pos, PrimitiveArray<T>* src, i
     const uint64_t* s = reinterpret_cast<const uint64_t*>(src_raw);
     ArrayForwardCopy<uint64_t>(d, s, count);
   }
+  IncrWriteCounter();
+  SetDirtyBit();
 }
 
 template<typename T, VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrierOption>

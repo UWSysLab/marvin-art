@@ -65,9 +65,9 @@ class CopyRefsVisitor {
                     MemberOffset offset,
                     bool is_static ATTRIBUTE_UNUSED) const
             SHARED_REQUIRES(Locks::mutator_lock_) {
-        LOG(INFO) << "NIELDEBUG replacing ref " << obj->GetFieldObject<mirror::Object>(offset)
-                  << " with ref " << stub_->GetReference(cur_ref_) << ", cur_ref_ " << cur_ref_;
-        obj->SetFieldObject<false>(offset, stub_->GetReference(cur_ref_));
+        if (obj->GetFieldObject<mirror::Object>(offset) != stub_->GetReference(cur_ref_)) {
+            obj->SetFieldObject<false>(offset, stub_->GetReference(cur_ref_));
+        }
         cur_ref_++;
     }
 
