@@ -32,6 +32,12 @@ namespace swap {
 const int MAGIC_NUM = 42424242;
 const double COMPACT_THRESHOLD = 0.25;
 
+// Return values of writeToSwapFile().
+const int SWAPFILE_WRITE_OK = 0;
+const int SWAPFILE_WRITE_GARBAGE = 1;
+const int SWAPFILE_WRITE_NULL_CLASS = 2;
+const int SWAPFILE_WRITE_RESIZED = 3;
+
 /* Internal functions */
 std::string getPackageName();
 void openFile(const std::string & path, std::fstream & stream);
@@ -45,6 +51,14 @@ void FreeFromRosAllocSpace(Thread * self, gc::Heap * heap, mirror::Object * obj)
 void FreeFromLargeObjectSpace(Thread * self, gc::Heap * heap, mirror::Object * obj)
         SHARED_REQUIRES(Locks::mutator_lock_);
 void dumpObject(mirror::Object * obj);
+
+/*
+ * Writes a snapshot of the given object to the swap file, overwriting the object's
+ * previous snapshot in the swap file if one exists. Clears the object's dirty bit.
+ * Grabs the swapFileMutex and swapStateMutex during execution.
+ */
+int writeToSwapFile(Thread * self, gc::Heap * heap, mirror::Object * object, bool * ioError)
+        SHARED_REQUIRES(Locks::mutator_lock_);
 
 /*
  * Allocates space for the object in memory and copies the object from the swap
@@ -128,8 +142,9 @@ class WriteTask : public gc::HeapTask {
 
         int numGarbageObjects = 0;
         int numNullClasses = 0;
-        int numSpacelessObjects = 0;
         int numResizedObjects = 0;
+
+        gc::Heap * heap = getHeapChecked();
 
         int queueSize = 0;
 
@@ -149,96 +164,26 @@ class WriteTask : public gc::HeapTask {
             }
             writeQueueMutex.ExclusiveUnlock(self);
 
-            gc::Heap * heap = getHeapChecked();
-            bool objectInSpace = (   heap->GetRosAllocSpace()->Contains(object)
-                                  || heap->GetLargeObjectsSpace()->Contains(object));
-            if (!objectInSpace) {
-                numSpacelessObjects++;
-            }
-
-            bool validObject = false;
-            if (object != nullptr && objectInSpace) {
-                object->SetIgnoreReadFlag();
-                if (object->GetPadding() == MAGIC_NUM) {
-                    if (object->GetClass() != nullptr) {
-                        validObject = true;
-                    }
-                    else {
-                        numNullClasses++;
-                    }
-                }
-                else {
+            if (object != nullptr) {
+                int writeResult = writeToSwapFile(self, heap, object, &ioError);
+                if (writeResult == SWAPFILE_WRITE_GARBAGE) {
                     numGarbageObjects++;
                 }
-                object->ClearIgnoreReadFlag();
+                if (writeResult == SWAPFILE_WRITE_NULL_CLASS) {
+                    numNullClasses++;
+                }
+                if (writeResult == SWAPFILE_WRITE_RESIZED) {
+                    numResizedObjects++;
+                }
             }
 
-            if (validObject) {
-                object->SetIgnoreReadFlag();
-                size_t objectSize = object->SizeOf();
-                object->ClearIgnoreReadFlag();
+            if (ioError) {
+                done = true;
+            }
 
-                char * objectData = new char[objectSize];
-                object->ClearDirtyBit();
-                std::memcpy(objectData, object, objectSize);
-
-                swapStateMutex.SharedLock(self);
-                bool inSwapFile = (objectOffsetMap.find(object) != objectOffsetMap.end());
-                swapStateMutex.SharedUnlock(self);
-
-                if (!inSwapFile) {
-                    swapFileMutex.ExclusiveLock(self);
-                    std::streampos offset = swapfile.tellp();
-                    swapfile.write(objectData, objectSize);
-                    bool writeError = checkStreamError(swapfile,
-                            "writing object to swapfile for the first time in WriteTask");
-                    if (writeError) {
-                        ioError = true;
-                    }
-                    swapFileMutex.ExclusiveUnlock(self);
-
-                    swapStateMutex.ExclusiveLock(self);
-                    objectOffsetMap[object] = offset;
-                    objectSizeMap[object] = objectSize;
-                    swapStateMutex.ExclusiveUnlock(self);
-
-                    swapfileObjects++;
-                    swapfileSize += objectSize;
-                }
-                else {
-                    swapStateMutex.SharedLock(self);
-                    std::streampos offset = objectOffsetMap[object];
-                    size_t size = objectSizeMap[object];
-                    swapStateMutex.SharedUnlock(self);
-
-                    if (size != objectSize) {
-                        numResizedObjects++;
-                    }
-                    else {
-                        swapFileMutex.ExclusiveLock(self);
-                        std::streampos curpos = swapfile.tellp();
-                        swapfile.seekp(offset);
-                        swapfile.write(objectData, objectSize);
-                        bool writeError = checkStreamError(swapfile,
-                                "writing object to swapfile again in WriteTask");
-                        if (writeError) {
-                            ioError = true;
-                        }
-                        swapfile.seekp(curpos);
-                        swapFileMutex.ExclusiveUnlock(self);
-                    }
-                }
-
-                delete[] objectData;
-
-                if (ioError) {
-                    done = true;
-                }
-
-                uint64_t currentTime = NanoTime();
-                if (currentTime - startTime > 300000000) {
-                    done = true;
-                }
+            uint64_t currentTime = NanoTime();
+            if (currentTime - startTime > 300000000) {
+                done = true;
             }
         }
         Locks::mutator_lock_->ReaderUnlock(self);
@@ -246,12 +191,10 @@ class WriteTask : public gc::HeapTask {
         LOG(INFO) << "NIEL done writing objects in WriteTask; " << queueSize
                   << " objects still in queue; swap file has " << swapfileObjects
                   << " objects, size " << swapfileSize;
-        if (numGarbageObjects > 0 || numNullClasses > 0 || numSpacelessObjects > 0
-                || numResizedObjects > 0) {
-            LOG(INFO) << "NIEL WriteTask irregularities: " << numGarbageObjects
-                      << " garbage objects, " << numNullClasses << " null classes, "
-                      << numSpacelessObjects << " objects not in any space, "
-                      << numResizedObjects << " resized objects";
+        if (numGarbageObjects > 0 || numNullClasses > 0 || numResizedObjects > 0) {
+            LOG(ERROR) << "NIELERROR WriteTask irregularities: " << numGarbageObjects
+                       << " garbage objects, " << numNullClasses << " null classes, "
+                       << numResizedObjects << " resized objects";
         }
 
         if ((double)freedSize / swapfileSize > COMPACT_THRESHOLD) {
@@ -274,6 +217,91 @@ class WriteTask : public gc::HeapTask {
         }
     }
 };
+
+int writeToSwapFile(Thread * self, gc::Heap * heap, mirror::Object * object, bool * ioError) {
+    int result = SWAPFILE_WRITE_OK;
+    *ioError = false;
+
+    CHECK(   heap->GetRosAllocSpace()->Contains(object)
+          || heap->GetLargeObjectsSpace()->Contains(object))
+        << " addr " << object;
+
+    bool validObject = false;
+    if (object != nullptr) {
+        object->SetIgnoreReadFlag();
+        if (object->GetPadding() == MAGIC_NUM) {
+            if (object->GetClass() != nullptr) {
+                validObject = true;
+            }
+            else {
+                result = SWAPFILE_WRITE_NULL_CLASS;
+            }
+        }
+        else {
+            result = SWAPFILE_WRITE_GARBAGE;
+        }
+        object->ClearIgnoreReadFlag();
+    }
+
+    if (validObject) {
+        object->SetIgnoreReadFlag();
+        size_t objectSize = object->SizeOf();
+        object->ClearIgnoreReadFlag();
+
+        char * objectData = new char[objectSize];
+        object->ClearDirtyBit();
+        std::memcpy(objectData, object, objectSize);
+
+        swapStateMutex.SharedLock(self);
+        bool inSwapFile = (objectOffsetMap.find(object) != objectOffsetMap.end());
+        swapStateMutex.SharedUnlock(self);
+
+        if (!inSwapFile) {
+            swapFileMutex.ExclusiveLock(self);
+            std::streampos offset = swapfile.tellp();
+            swapfile.write(objectData, objectSize);
+            bool writeError = checkStreamError(swapfile,
+                    "writing object to swapfile for the first time in WriteTask");
+            if (writeError) {
+                *ioError = true;
+            }
+            swapFileMutex.ExclusiveUnlock(self);
+
+            swapStateMutex.ExclusiveLock(self);
+            objectOffsetMap[object] = offset;
+            objectSizeMap[object] = objectSize;
+            swapStateMutex.ExclusiveUnlock(self);
+
+            swapfileObjects++;
+            swapfileSize += objectSize;
+        }
+        else {
+            swapStateMutex.SharedLock(self);
+            std::streampos offset = objectOffsetMap[object];
+            size_t size = objectSizeMap[object];
+            swapStateMutex.SharedUnlock(self);
+
+            if (size != objectSize) {
+                result = SWAPFILE_WRITE_RESIZED;
+            }
+            else {
+                swapFileMutex.ExclusiveLock(self);
+                std::streampos curpos = swapfile.tellp();
+                swapfile.seekp(offset);
+                swapfile.write(objectData, objectSize);
+                bool writeError = checkStreamError(swapfile,
+                        "writing object to swapfile again in WriteTask");
+                if (writeError) {
+                    *ioError = true;
+                }
+                swapfile.seekp(curpos);
+                swapFileMutex.ExclusiveUnlock(self);
+            }
+        }
+        delete[] objectData;
+    }
+    return result;
+}
 
 // Based on MarkVisitor in runtime/gc/collector/mark_sweep.cc
 class PatchVisitor {
@@ -377,14 +405,30 @@ void FreeFromLargeObjectSpace(Thread * self, gc::Heap * heap, mirror::Object * o
 }
 
 void SwapObjectsOut(Thread * self, gc::Heap * heap) {
+    // First make sure all objects in swapOutSet have been written to the swap file
+    for (auto it = swapOutSet.begin(); it != swapOutSet.end(); it++) {
+        mirror::Object * obj = *it;
+        if (obj->GetDirtyBit()) {
+            obj->SetPadding(MAGIC_NUM);
+            bool ioError = false;
+            int writeResult = writeToSwapFile(self, heap, obj, &ioError);
+            if (ioError || writeResult != SWAPFILE_WRITE_OK) {
+                LOG(ERROR) << "NIELERROR error writing object during SwapObjectsOut; result: "
+                           << writeResult << " ioError: " << ioError;
+            }
+        }
+    }
+
     swappingOutObjects = true;
     for (auto it = swapOutSet.begin(); it != swapOutSet.end(); it++) {
         mirror::Object * obj = *it;
+
         CHECK(   heap->GetRosAllocSpace()->Contains(obj)
               || heap->GetLargeObjectsSpace()->Contains(obj));
-        if (obj->GetDirtyBit()) {
-            return;
-        }
+
+        swapStateMutex.SharedLock(self);
+        CHECK(objectOffsetMap.count(obj) && objectSizeMap.count(obj));
+        swapStateMutex.SharedUnlock(self);
 
         size_t stubSize = Stub::GetStubSize(obj);
         size_t bytes_allocated;
@@ -418,6 +462,13 @@ void SwapObjectsOut(Thread * self, gc::Heap * heap) {
     remappingTable.clear();
     swapOutSet.clear();
     swappingOutObjects = false;
+
+    // Clear the write queue (and write set), since after the semi-space GC
+    // runs, the pointers in the write queue will be invalid
+    writeQueueMutex.ExclusiveLock(self);
+    writeQueue.clear();
+    writeSet.clear();
+    writeQueueMutex.ExclusiveUnlock(self);
 }
 
 void RecordForwardedObject(Thread * self, mirror::Object * obj, mirror::Object * forwardAddress) {
@@ -470,6 +521,9 @@ mirror::Object * swapInObject(Thread * self, gc::Heap * heap, Stub * stub,
     swapfile.read((char *)newObj, objSize);
     swapfile.seekg(curPos);
     swapFileMutex.ExclusiveUnlock(self);
+
+    CHECK(newObj->GetPadding() == MAGIC_NUM);
+    CHECK(newObj->GetDirtyBit() == 0);
 
     stub->CopyRefsInto(newObj);
     stub->SetObjectAddress(newObj);
@@ -822,16 +876,30 @@ void CheckAndUpdate(gc::collector::GarbageCollector * gc, mirror::Object * objec
     //uint8_t rsrVal = object->GetReadShiftRegister();
     uint8_t wsrVal = object->GetWriteShiftRegister();
 
-    if (objectSize > 200 && wsrVal < 2 && !wasWritten && object->GetDirtyBit()
-            && !object->GetNoSwapFlag()) {
-        Thread * self = Thread::Current();
-        writeQueueMutex.ExclusiveLock(self);
-        if (!writeSet.count(object)) {
-            writeSet.insert(object);
-            writeQueue.push_back(object);
-            object->SetPadding(MAGIC_NUM);
+    gc::Heap * heap = getHeapChecked();
+    bool inSpace = (   heap->GetRosAllocSpace()->Contains(object)
+                    || heap->GetLargeObjectsSpace()->Contains(object));
+
+    bool shouldSwap = (
+        objectSize > 200
+        && wsrVal < 2
+        && !wasWritten
+        && !object->GetNoSwapFlag()
+        && inSpace
+    );
+
+    if (shouldSwap) {
+        swapOutSet.insert(object);
+        if (object->GetDirtyBit()) {
+            Thread * self = Thread::Current();
+            writeQueueMutex.ExclusiveLock(self);
+            if (!writeSet.count(object)) {
+                writeSet.insert(object);
+                writeQueue.push_back(object);
+                object->SetPadding(MAGIC_NUM);
+            }
+            writeQueueMutex.ExclusiveUnlock(self);
         }
-        writeQueueMutex.ExclusiveUnlock(self);
     }
 
     if (wasRead) {
