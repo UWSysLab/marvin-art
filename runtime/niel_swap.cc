@@ -6,6 +6,7 @@
 #include "gc/task_processor.h"
 #include "mirror/object.h"
 #include "mirror/object-inl.h"
+#include "niel_common.h"
 #include "niel_scoped_timer.h"
 #include "niel_stub-inl.h"
 #include "runtime.h"
@@ -44,7 +45,6 @@ void openFile(const std::string & path, std::fstream & stream);
 void openFileAppend(const std::string & path, std::fstream & stream);
 bool checkStreamError(const std::ios & stream, const std::string & msg);
 bool isAppBlacklisted();
-gc::Heap * getHeapChecked();
 gc::TaskProcessor * getTaskProcessorChecked();
 void FreeFromRosAllocSpace(Thread * self, gc::Heap * heap, mirror::Object * obj)
         SHARED_REQUIRES(Locks::mutator_lock_);
@@ -534,7 +534,8 @@ mirror::Object * swapInObject(Thread * self, gc::Heap * heap, Stub * stub,
 //TODO: make sure obj doesn't get freed during GC as long as stub isn't freed,
 //      but is freed when stub is freed
 void SwapInOnDemand(Stub * stub) {
-    CHECK(getHeapChecked()->GetRosAllocSpace()->Contains((mirror::Object *)stub));
+    gc::Heap * heap = getHeapChecked();
+    CHECK(heap->GetRosAllocSpace()->Contains((mirror::Object *)stub));
 
     Thread * self = Thread::Current();
 
@@ -543,7 +544,6 @@ void SwapInOnDemand(Stub * stub) {
     size_t objSize = objectSizeMap[stub];
     swapStateMutex.SharedUnlock(self);
 
-    gc::Heap * heap = getHeapChecked();
     swapInObject(self, heap, stub, objOffset, objSize);
 
     swappedInSetMutex.ExclusiveLock(self);
@@ -596,14 +596,6 @@ void SwapObjectsIn(gc::Heap * heap) {
     patchStubReferences(self, heap);
     remappingTable.clear();
     doingSwapInCleanup = false;
-}
-
-gc::Heap * getHeapChecked() {
-    Runtime * runtime = Runtime::Current();
-    if (runtime == nullptr) {
-        return nullptr;
-    }
-    return runtime->GetHeap();
 }
 
 gc::TaskProcessor * getTaskProcessorChecked() {
@@ -865,6 +857,7 @@ void CheckAndUpdate(gc::collector::GarbageCollector * gc, mirror::Object * objec
 
     object->SetIgnoreReadFlag();
     size_t objectSize = object->SizeOf();
+    bool isSwappableType = objectIsSwappableType(object);
     object->ClearIgnoreReadFlag();
 
     uint8_t readCounterVal = object->GetReadCounter();
@@ -877,16 +870,13 @@ void CheckAndUpdate(gc::collector::GarbageCollector * gc, mirror::Object * objec
     uint8_t wsrVal = object->GetWriteShiftRegister();
 
     gc::Heap * heap = getHeapChecked();
-    bool inSpace = (   heap->GetRosAllocSpace()->Contains(object)
-                    || heap->GetLargeObjectsSpace()->Contains(object));
-
-    bool shouldSwap = (
-        objectSize > 200
-        && wsrVal < 2
-        && !wasWritten
+    bool shouldSwap =
+        objectIsLarge(objectSize)
+        && objectIsCold(wsrVal, wasWritten)
         && !object->GetNoSwapFlag()
-        && inSpace
-    );
+        && objectInSwappableSpace(heap, object)
+        && isSwappableType
+    ;
 
     if (shouldSwap) {
         swapOutSet.insert(object);

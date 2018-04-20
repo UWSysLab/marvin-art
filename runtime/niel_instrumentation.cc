@@ -16,6 +16,7 @@
 #include <map>
 
 #include "niel_bivariate_histogram.h"
+#include "niel_common.h"
 #include "niel_histogram.h"
 
 namespace art {
@@ -75,6 +76,10 @@ long largeObjectTotalPointerSize = 0;
 
 long coldObjectTotalSize = 0;
 long largeColdObjectTotalSize = 0;
+
+long noSwapFlagTotalSize = 0;
+long notInSpaceTotalSize = 0;
+long notSwappableTypeTotalSize = 0;
 
 Histogram smallObjectPointerFracHist(10, 0, 1); // objects <=200 bytes
 Histogram largeObjectPointerFracHist(10, 0, 1); // objects >200 bytes
@@ -194,6 +199,10 @@ void StartAccessCount(gc::collector::GarbageCollector * gc) {
 
     coldObjectTotalSize = 0;
     largeColdObjectTotalSize = 0;
+
+    noSwapFlagTotalSize = 0;
+    notInSpaceTotalSize = 0;
+    notSwappableTypeTotalSize = 0;
 }
 
 void CountAccess(gc::collector::GarbageCollector * gc, mirror::Object * object) {
@@ -207,6 +216,7 @@ void CountAccess(gc::collector::GarbageCollector * gc, mirror::Object * object) 
 
     object->SetIgnoreReadFlag();
     size_t objectSize = object->SizeOf();
+    bool isSwappableType = objectIsSwappableType(object);
     mirror::Class * klass = object->GetClass();
     object->ClearIgnoreReadFlag();
     uint32_t numPointers = klass->NumReferenceInstanceFields();
@@ -269,10 +279,20 @@ void CountAccess(gc::collector::GarbageCollector * gc, mirror::Object * object) 
     writeShiftRegVsPointerFracHist.Add(wsrVal, pointerSizeFrac);
     objectSizeVsPointerFracHist.Add(objectSize, pointerSizeFrac);
 
-    if (wsrVal < 2 && !wasWritten) {
+    if (objectIsCold(wsrVal, wasWritten)) {
         coldObjectTotalSize += objectSize;
-        if (objectSize > 200) {
+        if (objectIsLarge(objectSize)) {
             largeColdObjectTotalSize += objectSize;
+            if (object->GetNoSwapFlag()) {
+                noSwapFlagTotalSize += objectSize;
+            }
+            gc::Heap * heap = getHeapChecked();
+            if (!objectInSwappableSpace(heap, object)) {
+                notInSpaceTotalSize += objectSize;
+            }
+            if (!isSwappableType) {
+                notSwappableTypeTotalSize += objectSize;
+            }
         }
     }
 
@@ -309,6 +329,10 @@ void FinishAccessCount(gc::collector::GarbageCollector * gc) {
               << " large object size: " << largeObjectTotalObjectSize
               << " total object size: "
               << (smallObjectTotalObjectSize + largeObjectTotalObjectSize);
+    LOG(INFO) << "NIEL size of swappable objects with NoSwapFlagSet: " << noSwapFlagTotalSize;
+    LOG(INFO) << "NIEL size of swappable objects not in RosAlloc or large object space: "
+              << notInSpaceTotalSize;
+    LOG(INFO) << "NIEL size of swappable objects of invalid type: " << notSwappableTypeTotalSize;
     LOG(INFO) << "NIEL pointer frac hist of small objects (scaled):\n"
               << smallObjectPointerFracHist.Print(true, true);
     LOG(INFO) << "NIEL pointer frac hist of large objects (scaled):\n"
@@ -361,7 +385,7 @@ void printAllocCounts() {
 }
 
 void printHeap() {
-    gc::Heap * heap = Runtime::Current()->GetHeap();
+    gc::Heap * heap = getHeapChecked();
     if (heap == NULL) {
         return;
     }
