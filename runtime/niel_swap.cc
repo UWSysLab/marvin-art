@@ -847,7 +847,7 @@ void CompactSwapFile(Thread * self) {
 }
 
 void CheckAndUpdate(gc::collector::GarbageCollector * gc, mirror::Object * object) {
-    if (!strstr(gc->GetName(), "partial concurrent mark sweep")) {
+    if (gc->GetGcType() != gc::collector::kGcTypePartial) {
         return;
     }
 

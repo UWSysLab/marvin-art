@@ -165,7 +165,7 @@ void RecordFree(Thread * self, gc::space::Space * space, size_t size, int count)
 }
 
 void StartAccessCount(gc::collector::GarbageCollector * gc) {
-    if (!strstr(gc->GetName(), "partial concurrent mark sweep")) {
+    if (gc->GetGcType() != gc::collector::kGcTypePartial) {
         return;
     }
 
@@ -206,7 +206,7 @@ void StartAccessCount(gc::collector::GarbageCollector * gc) {
 }
 
 void CountAccess(gc::collector::GarbageCollector * gc, mirror::Object * object) {
-    if (!strstr(gc->GetName(), "partial concurrent mark sweep")) {
+    if (gc->GetGcType() != gc::collector::kGcTypePartial) {
         return;
     }
 
@@ -300,7 +300,7 @@ void CountAccess(gc::collector::GarbageCollector * gc, mirror::Object * object) 
 }
 
 void FinishAccessCount(gc::collector::GarbageCollector * gc) {
-    if (!strstr(gc->GetName(), "partial concurrent mark sweep")) {
+    if (gc->GetGcType() != gc::collector::kGcTypePartial) {
         return;
     }
 
