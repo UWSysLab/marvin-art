@@ -324,12 +324,16 @@ class PatchVisitor {
 
 // Method signature from MarkSweep::DelayReferenceReferentVisitor in
 // runtime/gc/collector/mark_sweep.cc.
-//
-// TODO: Figure out if this class should actually be doing something
-class PatchDummyReferenceVisitor {
+class PatchReferenceVisitor {
   public:
     void operator()(mirror::Class* klass ATTRIBUTE_UNUSED,
-                    mirror::Reference* ref ATTRIBUTE_UNUSED) const {}
+                    mirror::Reference* ref) const
+            SHARED_REQUIRES(Locks::mutator_lock_) {
+        mirror::Object * referent = ref->GetReferent();
+        if (remappingTable.count(referent)) {
+            ref->SetReferent<false>((mirror::Object *)remappingTable[referent]);
+        }
+    }
 };
 
 void PatchCallback(void * start, void * end ATTRIBUTE_UNUSED, size_t num_bytes,
@@ -355,8 +359,8 @@ void PatchCallback(void * start, void * end ATTRIBUTE_UNUSED, size_t num_bytes,
     }
     else {
         PatchVisitor visitor;
-        PatchDummyReferenceVisitor dummyVisitor;
-        obj->VisitReferences(visitor, dummyVisitor);
+        PatchReferenceVisitor referenceVisitor;
+        obj->VisitReferences(visitor, referenceVisitor);
     }
 }
 
@@ -1030,7 +1034,24 @@ class DumpObjectVisitor {
 class DumpObjectReferenceVisitor {
   public:
     void operator()(mirror::Class* klass ATTRIBUTE_UNUSED,
-                    mirror::Reference* ref ATTRIBUTE_UNUSED) const {}
+                    mirror::Reference* ref) const
+            SHARED_REQUIRES(Locks::mutator_lock_) {
+        mirror::Object * referent = ref->GetReferent();
+        std::string referentString;
+        if (referent == nullptr) {
+            referentString = "null";
+        }
+        else if (referent->GetStubFlag()) {
+            referentString = "stub";
+        }
+        else if (referent->GetClass() == nullptr) {
+            referentString = "null class";
+        }
+        else {
+            referentString = PrettyClass(referent->GetClass());
+        }
+        LOG(INFO) << "reference referent: " << referent << " " << referentString;
+    }
 };
 
 void dumpObject(mirror::Object * obj) SHARED_REQUIRES(Locks::mutator_lock_) {
