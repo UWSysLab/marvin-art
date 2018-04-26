@@ -591,9 +591,13 @@ void SwapObjectsIn(gc::Heap * heap) {
             std::streampos objOffset = objectOffsetMap[stub];
             size_t objSize = objectSizeMap[stub];
 
-            mirror::Object * newObj = swapInObject(self, heap, stub, objOffset, objSize);
+            // Only swap in object if it wasn't already swapped in on-demand
+            mirror::Object * swappedInObj = stub->GetObjectAddress();
+            if (swappedInObj == nullptr) {
+                swappedInObj = swapInObject(self, heap, stub, objOffset, objSize);
+            }
             FreeFromRosAllocSpace(self, heap, obj);
-            remappingTable[stub] = newObj;
+            remappingTable[stub] = swappedInObj;
         }
     }
     swapStateMutex.SharedUnlock(self);
