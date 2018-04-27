@@ -94,6 +94,13 @@ void validateSwapFile(Thread * self);
  */
 void patchStubReferences(Thread * self, gc::Heap * heap) REQUIRES(Locks::mutator_lock_);
 
+/*
+ * Determines whether an object and the objects referenced by it should be
+ * excluded from being swapped out. The caller is responsible for setting and
+ * clearing the object's IgnoreReadFlag before and after calling this function.
+ */
+bool shouldExcludeObjectAndMembers(mirror::Object * obj) SHARED_REQUIRES(Locks::mutator_lock_);
+
 /* Variables */
 Mutex writeQueueMutex("WriteQueueMutex", kLoggingLock);
 Mutex swappedInSetMutex("SwappedInSetMutex", kLoggingLock);
@@ -164,7 +171,7 @@ class WriteTask : public gc::HeapTask {
             }
             writeQueueMutex.ExclusiveUnlock(self);
 
-            if (object != nullptr) {
+            if (object != nullptr && !object->GetNoSwapFlag()) {
                 int writeResult = writeToSwapFile(self, heap, object, &ioError);
                 if (writeResult == SWAPFILE_WRITE_GARBAGE) {
                     numGarbageObjects++;
@@ -303,6 +310,44 @@ int writeToSwapFile(Thread * self, gc::Heap * heap, mirror::Object * object, boo
     return result;
 }
 
+bool shouldExcludeObjectAndMembers(mirror::Object * obj) {
+    std::string className = PrettyClass(obj->GetClass());
+    bool excluded =
+           className.find("java.lang.Class<android") == 0
+        || className.find("java.lang.Class<com.android") == 0
+    ;
+    return excluded;
+}
+
+class ExcludeVisitor {
+  public:
+    void operator()(mirror::Object * obj,
+                    MemberOffset offset,
+                    bool is_static ATTRIBUTE_UNUSED) const
+            SHARED_REQUIRES(Locks::mutator_lock_) {
+        mirror::Object * ref = obj->GetFieldObject<mirror::Object>(offset);
+        if (ref != nullptr) {
+            if (ref->GetStubFlag()) {
+                LOG(ERROR) << "NIELERROR ref " << ref << " of object " << obj
+                           << " that should be excluded from swapping was already swapped out";
+            }
+            else {
+                ref->SetNoSwapFlag();
+            }
+        }
+    }
+
+    void VisitRootIfNonNull(mirror::CompressedReference<mirror::Object>* root ATTRIBUTE_UNUSED) const {}
+
+    void VisitRoot(mirror::CompressedReference<mirror::Object>* root ATTRIBUTE_UNUSED) const {}
+};
+
+class DummyReferenceVisitor {
+  public:
+    void operator()(mirror::Class* klass ATTRIBUTE_UNUSED,
+                    mirror::Reference* ref ATTRIBUTE_UNUSED) const { }
+};
+
 // Based on MarkVisitor in runtime/gc/collector/mark_sweep.cc
 class PatchVisitor {
   public:
@@ -409,7 +454,21 @@ void FreeFromLargeObjectSpace(Thread * self, gc::Heap * heap, mirror::Object * o
 }
 
 void SwapObjectsOut(Thread * self, gc::Heap * heap) {
-    // First make sure all objects in swapOutSet have been written to the swap file
+    // Remove any object from swapOutSet whose NoSwapFlag was set since it was
+    // added (currently, this only happens because the object was marked for
+    // exclusion)
+    std::set<mirror::Object *> removeSet;
+    for (auto it = swapOutSet.begin(); it != swapOutSet.end(); it++) {
+        mirror::Object * obj = *it;
+        if (obj->GetNoSwapFlag()) {
+            removeSet.insert(obj);
+        }
+    }
+    for (auto it = removeSet.begin(); it != removeSet.end(); it++) {
+        swapOutSet.erase(*it);
+    }
+
+    // Make sure all objects in swapOutSet have been written to the swap file
     for (auto it = swapOutSet.begin(); it != swapOutSet.end(); it++) {
         mirror::Object * obj = *it;
         if (obj->GetDirtyBit()) {
@@ -878,13 +937,27 @@ void CheckAndUpdate(gc::collector::GarbageCollector * gc, mirror::Object * objec
     uint8_t wsrVal = object->GetWriteShiftRegister();
 
     gc::Heap * heap = getHeapChecked();
-    bool shouldSwap =
+    bool shouldSwapPreliminary =
         objectIsLarge(objectSize)
         && objectIsCold(wsrVal, wasWritten)
         && !object->GetNoSwapFlag()
         && objectInSwappableSpace(heap, object)
         && isSwappableType
     ;
+
+    bool shouldSwap = false;
+    if (shouldSwapPreliminary) {
+        object->SetIgnoreReadFlag();
+        bool isExcluded = shouldExcludeObjectAndMembers(object);
+        if (isExcluded) {
+            object->SetNoSwapFlag();
+            ExcludeVisitor visitor;
+            DummyReferenceVisitor referenceVisitor;
+            object->VisitReferences(visitor, referenceVisitor);
+        }
+        object->ClearIgnoreReadFlag();
+        shouldSwap = shouldSwapPreliminary && !isExcluded;
+    }
 
     if (shouldSwap) {
         swapOutSet.insert(object);

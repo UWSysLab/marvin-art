@@ -35,7 +35,11 @@ inline bool objectIsLarge(size_t objectSize) {
  */
 inline bool objectIsSwappableType(mirror::Object * obj)
         SHARED_REQUIRES(Locks::mutator_lock_) {
-    return obj->IsArrayInstance() && !obj->IsObjectArray();
+    return (
+               (obj->IsArrayInstance() && !obj->IsObjectArray())
+            || (!obj->IsArrayInstance() && !obj->IsClass() && !obj->IsClassLoader()
+                 && !obj->IsDexCache() && !obj->IsString() && !obj->IsReferenceInstance())
+            );
 }
 
 inline bool objectInSwappableSpace(gc::Heap * heap, mirror::Object * obj) {
