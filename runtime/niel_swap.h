@@ -79,6 +79,12 @@ void SwapInOnDemand(Stub * stub) SHARED_REQUIRES(Locks::mutator_lock_);
  */
 void CleanUpOnDemandSwaps(gc::Heap * heap) REQUIRES(Locks::mutator_lock_);
 
+/*
+ * Used by Heap::UpdateProcessState() to notify the swap code when the app
+ * transitions into and out of the foreground state.
+ */
+void SetInForeground(bool inForeground);
+
 } // namespace swap
 } // namespace niel
 } // namespace art

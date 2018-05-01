@@ -960,6 +960,7 @@ void Heap::UpdateProcessState(ProcessState old_process_state, ProcessState new_p
         MutexLock mu(self, *gc_complete_lock_);
         WaitForGcToCompleteLocked(kGcCauseForAlloc, self);
         ScopedSuspendAll ssa("niel_swap_objects_in");
+        niel::swap::SetInForeground(true);
         niel::swap::SwapObjectsIn(this);
       }
       // Transition back to foreground right away to prevent jank.
@@ -971,6 +972,7 @@ void Heap::UpdateProcessState(ProcessState old_process_state, ProcessState new_p
       // the collector.
       RequestCollectorTransition(background_collector_type_,
                                  kIsDebugBuild ? 0 : kCollectorTransitionWait);
+      niel::swap::SetInForeground(false);
     }
   }
 }

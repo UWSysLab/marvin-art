@@ -32,6 +32,11 @@ namespace swap {
 /* Constants */
 const int MAGIC_NUM = 42424242;
 const double COMPACT_THRESHOLD = 0.25;
+const int BG_MARK_SWEEPS_BEFORE_SEMI_SPACE = 4;
+const uint64_t WRITE_TASK_FG_MAX_DURATION = 300000000; // ns
+const uint64_t WRITE_TASK_BG_MAX_DURATION = 300000000; // ns
+const uint64_t WRITE_TASK_FG_WAIT_TIME = 3000000000; // ns
+const uint64_t WRITE_TASK_BG_WAIT_TIME = 10000000000; // ns
 
 // Return values of writeToSwapFile().
 const int SWAPFILE_WRITE_OK = 0;
@@ -44,6 +49,7 @@ std::string getPackageName();
 void openFile(const std::string & path, std::fstream & stream);
 void openFileAppend(const std::string & path, std::fstream & stream);
 bool checkStreamError(const std::ios & stream, const std::string & msg);
+void scheduleNextTask(Thread * self, bool ioError);
 bool isAppBlacklisted();
 gc::TaskProcessor * getTaskProcessorChecked();
 void FreeFromRosAllocSpace(Thread * self, gc::Heap * heap, mirror::Object * obj)
@@ -124,10 +130,14 @@ std::map<void *, void *> semiSpaceRemappingTable; //TODO: combine with normal re
 std::set<mirror::Object *> swapOutSet;
 bool swappingOutObjects = false;
 bool doingSwapInCleanup = false;
+int bgMarkSweepCounter = 0;
 int freedObjects = 0;
 long freedSize = 0;
 int swapfileObjects = 0;
 int swapfileSize = 0;
+
+// Not locked but only modified in Heap::UpdateProcessState() and read in Tasks
+bool appInForeground = true;
 
 // Locked by swapFileMutex
 std::fstream swapfile;
@@ -194,7 +204,9 @@ class WriteTask : public gc::HeapTask {
             }
 
             uint64_t currentTime = NanoTime();
-            if (currentTime - startTime > 300000000) {
+            uint64_t maxDuration = appInForeground ? WRITE_TASK_FG_MAX_DURATION
+                                                   : WRITE_TASK_BG_MAX_DURATION;
+            if (currentTime - startTime > maxDuration) {
                 done = true;
             }
         }
@@ -214,21 +226,45 @@ class WriteTask : public gc::HeapTask {
             validateSwapFile(self);
         }
 
-        uint64_t nanoTime = NanoTime();
-        uint64_t targetTime = nanoTime + 3000000000;
-        gc::Heap * curHeap = getHeapChecked();
-        gc::TaskProcessor * taskProcessor = getTaskProcessorChecked();
-        if (taskProcessor != nullptr && taskProcessor->IsRunning()) {
-            if (ioError) {
-                LOG(INFO) << "NIEL not scheduling WriteTask again due to IO error";
-            }
-            else {
-                curHeap->RequestConcurrentGC(self, true);
-                taskProcessor->AddTask(self, new WriteTask(targetTime));
-            }
-        }
+        scheduleNextTask(self, ioError);
     }
 };
+
+void SetInForeground(bool inForeground) {
+    appInForeground = inForeground;
+    if (inForeground) {
+        bgMarkSweepCounter = 0;
+    }
+}
+
+void scheduleNextTask(Thread * self, bool ioError) {
+    uint64_t nanoTime = NanoTime();
+    uint64_t waitTime = appInForeground ? WRITE_TASK_FG_WAIT_TIME : WRITE_TASK_BG_WAIT_TIME;
+    uint64_t targetTime = nanoTime + waitTime;
+    gc::Heap * curHeap = getHeapChecked();
+    gc::TaskProcessor * taskProcessor = getTaskProcessorChecked();
+    if (taskProcessor != nullptr && taskProcessor->IsRunning()) {
+        if (ioError) {
+            LOG(INFO) << "NIEL not scheduling WriteTask again due to IO error";
+        }
+        else {
+            if (appInForeground) {
+                curHeap->RequestConcurrentGC(self, true);
+            }
+            else {
+                if (bgMarkSweepCounter >= BG_MARK_SWEEPS_BEFORE_SEMI_SPACE) {
+                    curHeap->PerformHomogeneousSpaceCompact();
+                    bgMarkSweepCounter = 0;
+                }
+                else {
+                    curHeap->RequestConcurrentGC(self, true);
+                    bgMarkSweepCounter++;
+                }
+            }
+            taskProcessor->AddTask(self, new WriteTask(targetTime));
+        }
+    }
+}
 
 int writeToSwapFile(Thread * self, gc::Heap * heap, mirror::Object * object, bool * ioError) {
     int result = SWAPFILE_WRITE_OK;
