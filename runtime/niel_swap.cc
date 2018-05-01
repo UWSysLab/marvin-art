@@ -409,6 +409,32 @@ void PatchCallback(void * start, void * end ATTRIBUTE_UNUSED, size_t num_bytes,
     }
 }
 
+class GlobalRefRootVisitor : public RootVisitor {
+    void VisitRoots(mirror::Object*** roots, size_t count,
+                    const RootInfo & info ATTRIBUTE_UNUSED)
+            SHARED_REQUIRES(Locks::mutator_lock_) {
+        for (size_t i = 0; i < count; i++) {
+            mirror::Object * oldRef = *roots[i];
+            if (remappingTable.count(oldRef)) {
+                *roots[i] = (mirror::Object *)remappingTable[oldRef];
+                LOG(INFO) << "NIEL VisitRoots patching ref " << oldRef << " to " << remappingTable[oldRef];
+            }
+        }
+    }
+
+    void VisitRoots(mirror::CompressedReference<mirror::Object>** roots, size_t count,
+                    const RootInfo & info ATTRIBUTE_UNUSED)
+            SHARED_REQUIRES(Locks::mutator_lock_) {
+        for (size_t i = 0; i < count; i++) {
+            mirror::Object * oldRef = roots[i]->AsMirrorPtr();
+            if (remappingTable.count(oldRef)) {
+                roots[i]->Assign((mirror::Object *)remappingTable[oldRef]);
+                LOG(INFO) << "NIEL VisitRoots patching ref " << oldRef << " to " << remappingTable[oldRef];
+            }
+        }
+    }
+};
+
 void patchStubReferences(Thread * self, gc::Heap * heap) {
     ScopedTimer timer("patching stub references");
 
@@ -417,6 +443,9 @@ void patchStubReferences(Thread * self, gc::Heap * heap) {
 
     gc::space::RosAllocSpace * rosAllocSpace = heap->GetRosAllocSpace();
     rosAllocSpace->Walk(&PatchCallback, nullptr);
+
+    GlobalRefRootVisitor visitor;
+    Runtime::Current()->VisitRoots(&visitor, kVisitRootFlagAllRoots);
 
     replaceDataStructurePointers(self, remappingTable);
 }
