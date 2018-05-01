@@ -950,6 +950,15 @@ void Heap::UpdateProcessState(ProcessState old_process_state, ProcessState new_p
     }
     if (jank_perceptible) {
       {
+        // Added by Niel: we need to make sure the GC isn't running when we swap objects back
+        // in, because otherwise, a stub that the GC is currently working with might be
+        // deleted while the GC is still using it. I think the code below blocks until any
+        // in-progress GC completes, but I'm not sure if it is the best/most correct way of
+        // doing so (it is based on code in Heap::PerformHomogeneousSpaceCompact()).
+        Thread * self = Thread::Current();
+        ScopedThreadStateChange stsc(self, kWaitingForGcToComplete);
+        MutexLock mu(self, *gc_complete_lock_);
+        WaitForGcToCompleteLocked(kGcCauseForAlloc, self);
         ScopedSuspendAll ssa("niel_swap_objects_in");
         niel::swap::SwapObjectsIn(this);
       }
