@@ -71,8 +71,13 @@ mirror::Object * swapInObject(Thread * self, gc::Heap * heap, Stub * stub,
 /*
  * For each key-value pair (a,b) in addrTable, replaces any key-value pair
  * (a,c) in objectOffsetMap or objectSizeMap with the new entry (b,c).
+ *
+ * If removeUntouched is true, this function removes all pairs (a,c) from
+ * objectOffsetMap and objectSizeMap that did not have a corresponding pair
+ * (a,b) in addrTable.
  */
-void replaceDataStructurePointers(Thread * self, const std::map<void *, void *> & addrTable);
+void replaceDataStructurePointers(Thread * self, const std::map<void *, void *> & addrTable,
+                                  bool removeUntouched);
 
 /*
  * Copies a file. Returns true on success and false on error. The caller is
@@ -447,13 +452,22 @@ void patchStubReferences(Thread * self, gc::Heap * heap) {
     GlobalRefRootVisitor visitor;
     Runtime::Current()->VisitRoots(&visitor, kVisitRootFlagAllRoots);
 
-    replaceDataStructurePointers(self, remappingTable);
+    replaceDataStructurePointers(self, remappingTable, false);
 }
 
 //TODO: figure out whether it's better to grab the lock once or keep grabbing
 //      and releasing
-void replaceDataStructurePointers(Thread * self, const std::map<void *, void *> & addrTable) {
+void replaceDataStructurePointers(Thread * self, const std::map<void *, void *> & addrTable,
+                                  bool removeUntouched) {
     swapStateMutex.ExclusiveLock(self);
+
+    std::set<void *> removeSet;
+    for (auto it = objectOffsetMap.begin(); it != objectOffsetMap.end(); it++) {
+        if (!addrTable.count(it->first)) {
+            removeSet.insert(it->first);
+        }
+    }
+
     for (auto it = addrTable.begin(); it != addrTable.end(); it++) {
         void * originalPtr = it->first;
         void * newPtr = it->second;
@@ -469,6 +483,14 @@ void replaceDataStructurePointers(Thread * self, const std::map<void *, void *> 
         objectSizeMap[newPtr] = osmIt->second;
         objectSizeMap.erase(osmIt);
     }
+
+    if (removeUntouched) {
+        for (auto it = removeSet.begin(); it != removeSet.end(); it++) {
+            objectOffsetMap.erase(*it);
+            objectSizeMap.erase(*it);
+        }
+    }
+
     swapStateMutex.ExclusiveUnlock(self);
 }
 
@@ -572,7 +594,19 @@ void RecordForwardedObject(Thread * self, mirror::Object * obj, mirror::Object *
 }
 
 void SemiSpaceUpdateDataStructures(Thread * self) {
-    replaceDataStructurePointers(self, semiSpaceRemappingTable);
+    /*
+     * We call replaceDataStructurePointers() with removeUntouched set to true
+     * because we assume that if an object/stub is present in the
+     * objectOffsetMap but missing from the semiSpaceRemappingTable, it is
+     * missing because it was freed by the SemiSpace GC.
+     *
+     * A bug would appear if it were possible for a non-moving object, such as
+     * a large object space object, to be in the objectOffsetMap when this
+     * function is called. In our current implementation, any LOS object would
+     * have been swapped out to disk and replaced by a stub before this
+     * function is called, so this situation should never happen.
+     */
+    replaceDataStructurePointers(self, semiSpaceRemappingTable, true);
     semiSpaceRemappingTable.clear();
 }
 
