@@ -69,11 +69,19 @@ class MANAGED Array : public Object {
   void* GetRawData(size_t component_size, int32_t index)
       SHARED_REQUIRES(Locks::mutator_lock_) {
     SWAP_PREAMBLE(GetRawData, Array, component_size, index)
+    if (!GetIgnoreReadFlag()) {
+      IncrReadCounter();
+    }
     intptr_t data = reinterpret_cast<intptr_t>(this) + DataOffset(component_size).Int32Value() +
         + (index * component_size);
     return reinterpret_cast<void*>(data);
   }
 
+  // Commented out by Niel: in order to count reads of an array inside
+  // GetRawData(), it must not be const.
+  //
+  // TODO: Uncomment if we ever stop using read counters.
+/*
   const void* GetRawData(size_t component_size, int32_t index) const
       SHARED_REQUIRES(Locks::mutator_lock_) {
     SWAP_PREAMBLE(GetRawData, Array, component_size, index)
@@ -81,6 +89,7 @@ class MANAGED Array : public Object {
         + (index * component_size);
     return reinterpret_cast<void*>(data);
   }
+*/
 
   // Returns true if the index is valid. If not, throws an ArrayIndexOutOfBoundsException and
   // returns false.
@@ -114,9 +123,15 @@ class MANAGED PrimitiveArray : public Array {
   static PrimitiveArray<T>* Alloc(Thread* self, size_t length)
       SHARED_REQUIRES(Locks::mutator_lock_) REQUIRES(!Roles::uninterruptible_);
 
+  // Commented out by Niel: the const version of GetRawData() is commented out,
+  // so this method will not compile.
+  //
+  // TODO: Uncomment if we ever stop using read counters.
+/*
   const T* GetData() const ALWAYS_INLINE  SHARED_REQUIRES(Locks::mutator_lock_) {
     return reinterpret_cast<const T*>(GetRawData(sizeof(T), 0));
   }
+*/
 
   T* GetData() ALWAYS_INLINE SHARED_REQUIRES(Locks::mutator_lock_) {
     return reinterpret_cast<T*>(GetRawData(sizeof(T), 0));
