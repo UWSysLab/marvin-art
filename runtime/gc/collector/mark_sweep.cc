@@ -146,7 +146,6 @@ void MarkSweep::InitializePhase() {
 void MarkSweep::RunPhases() {
   Thread* self = Thread::Current();
   LOG(INFO) << "NIEL running MarkSweep GC with name " << GetName();
-  niel::swap::InitIfNecessary(self);
   niel::inst::StartAccessCount(this);
   InitializePhase();
   Locks::mutator_lock_->AssertNotHeld(self);
