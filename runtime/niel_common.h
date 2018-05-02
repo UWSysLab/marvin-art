@@ -5,14 +5,27 @@
  * Common utility methods shared across niel_swap and niel_instrumentation.
  */
 
+#include <fstream>
+#include <string>
+
 #include "base/mutex.h"
-#include "gc/heap.h"
+#include "gc/heap-inl.h"
 #include "mirror/object.h"
 #include "runtime.h"
 
 namespace art {
 
 namespace niel {
+
+void openFile(const std::string & path, std::fstream & stream);
+
+void openFileAppend(const std::string & path, std::fstream & stream);
+
+bool checkStreamError(const std::ios & stream, const std::string & msg);
+
+std::string getPackageName();
+
+bool appOnCommonBlacklist(const std::string & packageName);
 
 /*
  * Returns true if the object is cold enough to be swapped based on the given

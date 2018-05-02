@@ -45,12 +45,7 @@ const int SWAPFILE_WRITE_NULL_CLASS = 2;
 const int SWAPFILE_WRITE_RESIZED = 3;
 
 /* Internal functions */
-std::string getPackageName();
-void openFile(const std::string & path, std::fstream & stream);
-void openFileAppend(const std::string & path, std::fstream & stream);
-bool checkStreamError(const std::ios & stream, const std::string & msg);
 void scheduleNextTask(Thread * self, bool ioError);
-bool isAppBlacklisted();
 gc::TaskProcessor * getTaskProcessorChecked();
 void FreeFromRosAllocSpace(Thread * self, gc::Heap * heap, mirror::Object * obj)
         SHARED_REQUIRES(Locks::mutator_lock_);
@@ -811,18 +806,6 @@ void GcRecordFree(Thread * self, mirror::Object * object) {
     }
 }
 
-bool isAppBlacklisted(const std::string & packageName) {
-    std::set<std::string> blacklist;
-    blacklist.insert("droid.launcher3");
-
-    for (auto it = blacklist.begin(); it != blacklist.end(); it++) {
-        if (packageName.find(*it) != std::string::npos) {
-            return true;
-        }
-    }
-    return false;
-}
-
 void InitIfNecessary(Thread * self) {
     uint32_t curPid = getpid();
     if (curPid == pid) {
@@ -854,7 +837,7 @@ void InitIfNecessary(Thread * self) {
     std::string packageName = getPackageName();
     std::string swapfilePath("/data/data/" + packageName + "/swapfile");
 
-    if (isAppBlacklisted(packageName)) {
+    if (appOnCommonBlacklist(packageName)) {
         LOG(ERROR) << "NIELERROR stopping swap initialization due to blacklisted app"
                    << " (package name " << packageName << ")";
         return;
@@ -1148,37 +1131,6 @@ void validateSwapFile(Thread * self) {
     else {
         LOG(INFO) << "NIEL swap file validation successful";
     }
-}
-
-std::string getPackageName() {
-    std::ifstream cmdlineFile("/proc/self/cmdline");
-    std::string cmdline;
-    getline(cmdlineFile, cmdline);
-    cmdlineFile.close();
-    return cmdline.substr(0, cmdline.find((char)0));
-}
-
-void openFile(const std::string & path, std::fstream & stream) {
-    stream.open(path, std::ios::binary | std::ios::in | std::ios::out | std::ios::trunc);
-    if (!stream) {
-        stream.close();
-        stream.open(path, std::ios::binary | std::ios::out);
-        stream.close();
-        stream.open(path, std::ios::binary | std::ios::in | std::ios::out | std::ios::trunc);
-    }
-}
-
-void openFileAppend(const std::string & path, std::fstream & stream) {
-    stream.open(path, std::ios::binary | std::ios::in | std::ios::out | std::ios::ate);
-}
-
-bool checkStreamError(const std::ios & stream, const std::string & msg) {
-    bool error = !stream;
-    if (error) {
-        LOG(ERROR) << "NIELERROR stream error: " << msg << " (" << stream.good() << " "
-                   << stream.eof() << " " << stream.fail() << " " << stream.bad() << ")";
-    }
-    return error;
 }
 
 class DumpObjectVisitor {

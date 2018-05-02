@@ -160,6 +160,7 @@ LIBART_COMMON_SRC_FILES := \
   native/org_apache_harmony_dalvik_ddmc_DdmVmInternal.cc \
   native/sun_misc_Unsafe.cc \
   niel_bivariate_histogram.cc \
+  niel_common.cc \
   niel_histogram.cc \
   niel_instrumentation.cc \
   niel_stub.cc \
