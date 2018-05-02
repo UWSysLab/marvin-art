@@ -265,7 +265,8 @@ class MANAGED LOCKABLE Object {
       SHARED_REQUIRES(Locks::mutator_lock_);
   bool CasLockWordWeakRelease(LockWord old_val, LockWord new_val)
       SHARED_REQUIRES(Locks::mutator_lock_);
-  uint32_t GetLockOwnerThreadId();
+  uint32_t GetLockOwnerThreadId()
+      SHARED_REQUIRES(Locks::mutator_lock_);
 
   // Try to enter the monitor, returns non null if we succeeded.
   mirror::Object* MonitorTryEnter(Thread* self)
@@ -449,7 +450,8 @@ class MANAGED LOCKABLE Object {
       SHARED_REQUIRES(Locks::mutator_lock_);
 
   template<VerifyObjectFlags kVerifyFlags = kDefaultVerifyFlags>
-  HeapReference<Object>* GetFieldObjectReferenceAddr(MemberOffset field_offset);
+  HeapReference<Object>* GetFieldObjectReferenceAddr(MemberOffset field_offset)
+      SHARED_REQUIRES(Locks::mutator_lock_);
 
   template<VerifyObjectFlags kVerifyFlags = kDefaultVerifyFlags, bool kIsVolatile = false>
   ALWAYS_INLINE uint8_t GetFieldBoolean(MemberOffset field_offset)
@@ -659,6 +661,7 @@ class MANAGED LOCKABLE Object {
   template<class T, VerifyObjectFlags kVerifyFlags = kDefaultVerifyFlags, bool kIsVolatile = false>
   ALWAYS_INLINE T GetFieldPtrWithSize(MemberOffset field_offset, size_t pointer_size)
       SHARED_REQUIRES(Locks::mutator_lock_) {
+    SWAP_PREAMBLE_TEMPLATE(GetFieldPtrWithSize, Object, GATHER_TEMPLATE_ARGS(T, kVerifyFlags, kIsVolatile), field_offset, pointer_size)
     DCHECK(pointer_size == 4 || pointer_size == 8) << pointer_size;
     if (pointer_size == 4) {
       return reinterpret_cast<T>(GetField32<kVerifyFlags, kIsVolatile>(field_offset));

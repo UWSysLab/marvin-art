@@ -124,6 +124,7 @@ class CopyObjectVisitor {
 };
 
 Object* Object::Clone(Thread* self) {
+  SWAP_PREAMBLE(Clone, Object, self)
   CHECK(!IsClass()) << "Can't clone classes.";
   // Object::SizeOf gets the right size even if we're an array. Using c->AllocObject() here would
   // be wrong.
@@ -156,6 +157,7 @@ void Object::SetHashCodeSeed(uint32_t new_seed) {
 }
 
 int32_t Object::IdentityHashCode() const {
+  SWAP_PREAMBLE(IdentityHashCode, Object, )
   mirror::Object* current_this = const_cast<mirror::Object*>(this);
   while (true) {
     LockWord lw = current_this->GetLockWord(false);
@@ -201,6 +203,7 @@ int32_t Object::IdentityHashCode() const {
 }
 
 void Object::CheckFieldAssignmentImpl(MemberOffset field_offset, Object* new_value) {
+  SWAP_PREAMBLE(CheckFieldAssignmentImpl, Object, field_offset, new_value)
   Class* c = GetClass();
   Runtime* runtime = Runtime::Current();
   if (runtime->GetClassLinker() == nullptr || !runtime->IsStarted() ||
@@ -245,6 +248,7 @@ void Object::CheckFieldAssignmentImpl(MemberOffset field_offset, Object* new_val
 }
 
 ArtField* Object::FindFieldByOffset(MemberOffset offset) {
+  SWAP_PREAMBLE(FindFieldByOffset, Object, offset)
   return IsClass() ? ArtField::FindStaticFieldWithOffset(AsClass(), offset.Uint32Value())
       : ArtField::FindInstanceFieldWithOffset(GetClass(), offset.Uint32Value());
 }
