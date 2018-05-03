@@ -147,6 +147,7 @@ std::set<mirror::Object *> writeSet; // prevents duplicate entries in writeQueue
 
 // Locked by swappedInSetMutex
 std::set<Stub *> swappedInSet;
+std::map<mirror::Object *, Stub *> swappedInMap; // maps objects swapped in on-demand to their stubs
 
 class WriteTask : public gc::HeapTask {
   public:
@@ -295,9 +296,44 @@ int writeToSwapFile(Thread * self, gc::Heap * heap, mirror::Object * object, boo
         object->ClearDirtyBit();
         std::memcpy(objectData, object, objectSize);
 
+        /*
+         * The code below is a bit convoluted because an object that was
+         * swapped in on-demand will be represented in the objectOffsetMap (and
+         * objectSizeMap) by its stub's address. As a result, we need to first
+         * check if the object itself is in the objectOffsetMap, and then check
+         * if it was swapped in on-demand and has a stub in the
+         * objectOffsetMap.
+         */
+        bool objectInMaps = false;
+        Stub * stub = nullptr;
+
         swapStateMutex.SharedLock(self);
-        bool inSwapFile = (objectOffsetMap.find(object) != objectOffsetMap.end());
+        objectInMaps = (objectOffsetMap.find(object) != objectOffsetMap.end());
         swapStateMutex.SharedUnlock(self);
+
+        if (!objectInMaps) {
+            swappedInSetMutex.ExclusiveLock(self);
+            if (swappedInMap.find(object) != swappedInMap.end()) {
+                stub = swappedInMap[object];
+            }
+            swappedInSetMutex.ExclusiveUnlock(self);
+        }
+
+        void * swapStateKey = nullptr;
+        bool inSwapFile = false;
+
+        if (objectInMaps) {
+            swapStateKey = object;
+            inSwapFile = true;
+        }
+        else if (stub != nullptr) {
+            swapStateKey = stub;
+            inSwapFile = true;
+        }
+        else {
+            swapStateKey = object;
+            inSwapFile = false;
+        }
 
         if (!inSwapFile) {
             swapFileMutex.ExclusiveLock(self);
@@ -311,8 +347,8 @@ int writeToSwapFile(Thread * self, gc::Heap * heap, mirror::Object * object, boo
             swapFileMutex.ExclusiveUnlock(self);
 
             swapStateMutex.ExclusiveLock(self);
-            objectOffsetMap[object] = offset;
-            objectSizeMap[object] = objectSize;
+            objectOffsetMap[swapStateKey] = offset;
+            objectSizeMap[swapStateKey] = objectSize;
             swapStateMutex.ExclusiveUnlock(self);
 
             swapfileObjects++;
@@ -320,8 +356,8 @@ int writeToSwapFile(Thread * self, gc::Heap * heap, mirror::Object * object, boo
         }
         else {
             swapStateMutex.SharedLock(self);
-            std::streampos offset = objectOffsetMap[object];
-            size_t size = objectSizeMap[object];
+            std::streampos offset = objectOffsetMap[swapStateKey];
+            size_t size = objectSizeMap[swapStateKey];
             swapStateMutex.SharedUnlock(self);
 
             if (size != objectSize) {
@@ -701,10 +737,11 @@ void SwapInOnDemand(Stub * stub) {
     size_t objSize = objectSizeMap[stub];
     swapStateMutex.SharedUnlock(self);
 
-    swapInObject(self, heap, stub, objOffset, objSize);
+    mirror::Object * obj = swapInObject(self, heap, stub, objOffset, objSize);
 
     swappedInSetMutex.ExclusiveLock(self);
     swappedInSet.insert(stub);
+    swappedInMap[obj] = stub;
     swappedInSetMutex.ExclusiveUnlock(self);
 }
 
@@ -721,6 +758,7 @@ void CleanUpOnDemandSwaps(gc::Heap * heap) REQUIRES(Locks::mutator_lock_) {
         FreeFromRosAllocSpace(self, heap, (mirror::Object *)stub);
     }
     swappedInSet.clear();
+    swappedInMap.clear();
     swappedInSetMutex.ExclusiveUnlock(self);
 
     patchStubReferences(self, heap);
