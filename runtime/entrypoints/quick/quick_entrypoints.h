@@ -22,6 +22,7 @@
 #include "base/macros.h"
 #include "base/mutex.h"
 #include "offsets.h"
+#include "niel_swap.h"
 
 #define QUICK_ENTRYPOINT_OFFSET(ptr_size, x) \
     Thread::QuickEntryPointOffset<ptr_size>(OFFSETOF_MEMBER(QuickEntryPoints, x))

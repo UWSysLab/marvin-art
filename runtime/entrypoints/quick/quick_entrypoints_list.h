@@ -162,6 +162,9 @@
   V(NewStringFromStringBuffer, void) \
   V(NewStringFromStringBuilder, void) \
 \
+  V(SwapInOnDemand, void, niel::swap::Stub*) \
+  V(NonexistantEntryPointForPadding, void) \
+\
   V(ReadBarrierJni, void, mirror::CompressedReference<mirror::Object>*, Thread*) \
   V(ReadBarrierMark, mirror::Object*, mirror::Object*) \
   V(ReadBarrierSlow, mirror::Object*, mirror::Object*, mirror::Object*, uint32_t) \
