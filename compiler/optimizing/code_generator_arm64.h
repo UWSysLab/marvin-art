@@ -577,8 +577,17 @@ class CodeGeneratorARM64 : public CodeGenerator {
   // NOTE: this method is super hack-y and probably could be written more
   // elegantly if I had a better understanding of the abstractions that VIXL
   // and the optimizing compiler use for code generation.
+  //
+  // TODO: there are registers that are not marked as live in the
+  // LocationSummary but still need to be saved and restored (e.g., the
+  // register that gets passed in as objectReg in
+  // CodeGeneratorARM64::GenerateVirtualCall()). Figure out why this is the
+  // case, and if we really do need to have the caller explicitly pass in
+  // additional registers to save, add documentation to make the purpose of
+  // registersToMaybeSave clear.
   void GenerateStubCheckAndSwapCode(vixl::Register objectReg,
-                                    const std::vector<vixl::Register> & registersTosave);
+                                    const std::vector<vixl::Register> & registersToMaybeSave,
+                                    LocationSummary * locations);
 
  private:
   // Factored implementation of GenerateFieldLoadWithBakerReadBarrier

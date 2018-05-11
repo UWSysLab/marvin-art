@@ -3723,7 +3723,7 @@ void CodeGeneratorARM64::GenerateStaticOrDirectCall(HInvokeStaticOrDirect* invok
 }
 
 void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
-    const std::vector<Register> & registersToSave) {
+      const std::vector<Register> & registersToMaybeSave, LocationSummary * locations) {
   const int REGISTER_WIDTH = 8;
 
   UseScratchRegisterScope temps(GetVIXLAssembler());
@@ -3750,11 +3750,44 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   vixl::Label swapDoneLabel;
   __ Cbnz(realObjectAddrReg, &swapDoneLabel);
 
+  std::vector<Register> registersToSave;
+
+  // Save registers in registersToMaybeSave only if they are not callee-saved
+  // registers
+  //
+  // TODO: make sure I'm handling register codes (and ART/VIXL conversion of
+  // those codes) correctly.
+  for (size_t i = 0; i < registersToMaybeSave.size(); i++) {
+    Register reg = registersToMaybeSave[i];
+    int artCode = helpers::ARTRegCodeFromVIXL(reg.code());
+    if (!IsCoreCalleeSaveRegister(artCode) && !IsFloatingPointCalleeSaveRegister(i)) {
+      registersToSave.push_back(reg);
+    }
+  }
+
+  // Add registers marked as live by the LocationSummary to the registersToSave
+  // list
+  RegisterSet * liveRegisterSet = locations->GetLiveRegisters();
+  for (size_t i = 0; i < GetNumberOfCoreRegisters(); i++) {
+    if (!IsCoreCalleeSaveRegister(i) && liveRegisterSet->ContainsCoreRegister(i)) {
+      registersToSave.push_back(Register(i, kXRegSize));
+    }
+  }
+  for (size_t i = 0; i < GetNumberOfFloatingPointRegisters(); i++) {
+    if (   !IsFloatingPointCalleeSaveRegister(i)
+        && liveRegisterSet->ContainsFloatingPointRegister(i)) {
+      registersToSave.push_back(Register(i, kDRegSize));
+    }
+  }
+
   // Save registers onto stack
-  int stackGrowthSize = ((registersToSave.size() * REGISTER_WIDTH / 16) + 1) * 16;
-  __ Sub(sp, sp, stackGrowthSize);
-  for (size_t i = 0; i < registersToSave.size(); i++) {
-    __ Str(registersToSave[i], MemOperand(sp, i * REGISTER_WIDTH));
+  int stackGrowthSize = 0;
+  if (registersToSave.size() > 0) {
+    stackGrowthSize = ((registersToSave.size() * REGISTER_WIDTH / 16) + 1) * 16;
+    __ Sub(sp, sp, stackGrowthSize);
+    for (size_t i = 0; i < registersToSave.size(); i++) {
+      __ Str(registersToSave[i], MemOperand(sp, i * REGISTER_WIDTH));
+    }
   }
 
   // Call SwapInOnDemand()
@@ -3766,10 +3799,12 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   __ Blr(lr);
 
   // Restore registers from stack
-  for (size_t i = 0; i < registersToSave.size(); i++) {
-    __ Ldr(registersToSave[i], MemOperand(sp, i * REGISTER_WIDTH));
+  if (registersToSave.size() > 0) {
+    for (size_t i = 0; i < registersToSave.size(); i++) {
+      __ Ldr(registersToSave[i], MemOperand(sp, i * REGISTER_WIDTH));
+    }
+    __ Add(sp, sp, stackGrowthSize);
   }
-  __ Add(sp, sp, stackGrowthSize);
 
   __ Bind(&swapDoneLabel);
 
@@ -3795,7 +3830,7 @@ void CodeGeneratorARM64::GenerateVirtualCall(HInvokeVirtual* invoke, Location te
 
   std::vector<Register> registersToSave;
   registersToSave.push_back(receiver);
-  GenerateStubCheckAndSwapCode(receiver, registersToSave);
+  GenerateStubCheckAndSwapCode(receiver, registersToSave, invoke->GetLocations());
 
   BlockPoolsScope block_pools(GetVIXLAssembler());
 
