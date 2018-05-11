@@ -1631,6 +1631,12 @@ void InstructionCodeGeneratorARM64::HandleFieldGet(HInstruction* instruction,
   BlockPoolsScope block_pools(GetVIXLAssembler());
   MemOperand field = HeapOperand(InputRegisterAt(instruction, 0), field_info.GetFieldOffset());
 
+  std::vector<CPURegister> registersToMaybeSave;
+  registersToMaybeSave.push_back(InputRegisterAt(instruction, 0));
+  codegen_->GenerateStubCheckAndSwapCode(InputRegisterAt(instruction, 0),
+                                         registersToMaybeSave,
+                                         locations);
+
   if (field_type == Primitive::kPrimNot && kEmitCompilerReadBarrier && kUseBakerReadBarrier) {
     // Object FieldGet with Baker's read barrier case.
     MacroAssembler* masm = GetVIXLAssembler();
@@ -1691,6 +1697,13 @@ void InstructionCodeGeneratorARM64::HandleFieldSet(HInstruction* instruction,
   CPURegister source = value;
   Offset offset = field_info.GetFieldOffset();
   Primitive::Type field_type = field_info.GetFieldType();
+
+  std::vector<CPURegister> registersToMaybeSave;
+  registersToMaybeSave.push_back(obj);
+  registersToMaybeSave.push_back(value);
+  codegen_->GenerateStubCheckAndSwapCode(obj,
+                                         registersToMaybeSave,
+                                         instruction->GetLocations());
 
   {
     // We use a block to end the scratch scope before the write barrier, thus
@@ -2053,6 +2066,20 @@ void InstructionCodeGeneratorARM64::VisitArrayGet(HArrayGet* instruction) {
   uint32_t offset = mirror::Array::DataOffset(Primitive::ComponentSize(type)).Uint32Value();
   Location out = locations->Out();
 
+  std::vector<CPURegister> registersToMaybeSave;
+  registersToMaybeSave.push_back(obj);
+  if (index.IsRegister()) {
+    registersToMaybeSave.push_back(XRegisterFrom(index));
+  }
+  else if (index.IsFpuRegister()) {
+    registersToMaybeSave.push_back(DRegisterFrom(index));
+  }
+  else {
+    CHECK(!index.IsRegisterPair());
+    CHECK(!index.IsFpuRegisterPair());
+  }
+  codegen_->GenerateStubCheckAndSwapCode(obj, registersToMaybeSave, locations);
+
   MacroAssembler* masm = GetVIXLAssembler();
   UseScratchRegisterScope temps(masm);
   // Block pools between `Load` and `MaybeRecordImplicitNullCheck`.
@@ -2118,6 +2145,12 @@ void LocationsBuilderARM64::VisitArrayLength(HArrayLength* instruction) {
 }
 
 void InstructionCodeGeneratorARM64::VisitArrayLength(HArrayLength* instruction) {
+  std::vector<CPURegister> registersToMaybeSave;
+  registersToMaybeSave.push_back(InputRegisterAt(instruction, 0));
+  codegen_->GenerateStubCheckAndSwapCode(InputRegisterAt(instruction, 0),
+                                         registersToMaybeSave,
+                                         instruction->GetLocations());
+
   BlockPoolsScope block_pools(GetVIXLAssembler());
   __ Ldr(OutputRegister(instruction),
          HeapOperand(InputRegisterAt(instruction, 0), mirror::Array::LengthOffset()));
@@ -2159,6 +2192,11 @@ void InstructionCodeGeneratorARM64::VisitArraySet(HArraySet* instruction) {
   MemOperand destination = HeapOperand(array);
   MacroAssembler* masm = GetVIXLAssembler();
   BlockPoolsScope block_pools(masm);
+
+  std::vector<CPURegister> registersToMaybeSave;
+  registersToMaybeSave.push_back(array);
+  registersToMaybeSave.push_back(value);
+  codegen_->GenerateStubCheckAndSwapCode(array, registersToMaybeSave, locations);
 
   if (!needs_write_barrier) {
     DCHECK(!may_need_runtime_call_for_type_check);
@@ -3151,6 +3189,11 @@ void InstructionCodeGeneratorARM64::VisitInstanceOf(HInstanceOf* instruction) {
   uint32_t component_offset = mirror::Class::ComponentTypeOffset().Int32Value();
   uint32_t primitive_offset = mirror::Class::PrimitiveTypeOffset().Int32Value();
 
+  std::vector<CPURegister> registersToMaybeSave;
+  registersToMaybeSave.push_back(obj);
+  registersToMaybeSave.push_back(cls);
+  codegen_->GenerateStubCheckAndSwapCode(obj, registersToMaybeSave, locations);
+
   vixl::Label done, zero;
   SlowPathCodeARM64* slow_path = nullptr;
 
@@ -3337,6 +3380,11 @@ void InstructionCodeGeneratorARM64::VisitCheckCast(HCheckCast* instruction) {
   uint32_t super_offset = mirror::Class::SuperClassOffset().Int32Value();
   uint32_t component_offset = mirror::Class::ComponentTypeOffset().Int32Value();
   uint32_t primitive_offset = mirror::Class::PrimitiveTypeOffset().Int32Value();
+
+  std::vector<CPURegister> registersToMaybeSave;
+  registersToMaybeSave.push_back(obj);
+  registersToMaybeSave.push_back(cls);
+  codegen_->GenerateStubCheckAndSwapCode(obj, registersToMaybeSave, locations);
 
   bool is_type_check_slow_path_fatal =
       (type_check_kind == TypeCheckKind::kExactCheck ||
@@ -3531,6 +3579,13 @@ void InstructionCodeGeneratorARM64::VisitInvokeInterface(HInvokeInterface* invok
   Offset class_offset = mirror::Object::ClassOffset();
   Offset entry_point = ArtMethod::EntryPointFromQuickCompiledCodeOffset(kArm64WordSize);
 
+  std::vector<CPURegister> registersToMaybeSave;
+  CHECK(receiver.IsRegister());
+  registersToMaybeSave.push_back(XRegisterFrom(receiver));
+  codegen_->GenerateStubCheckAndSwapCode(XRegisterFrom(receiver),
+                                         registersToMaybeSave,
+                                         locations);
+
   // The register ip1 is required to be used for the hidden argument in
   // art_quick_imt_conflict_trampoline, so prevent VIXL from using it.
   MacroAssembler* masm = GetVIXLAssembler();
@@ -3723,7 +3778,7 @@ void CodeGeneratorARM64::GenerateStaticOrDirectCall(HInvokeStaticOrDirect* invok
 }
 
 void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
-      const std::vector<Register> & registersToMaybeSave, LocationSummary * locations) {
+      const std::vector<CPURegister> & registersToMaybeSave, LocationSummary * locations) {
   const int REGISTER_WIDTH = 8;
 
   UseScratchRegisterScope temps(GetVIXLAssembler());
@@ -3750,7 +3805,7 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   vixl::Label swapDoneLabel;
   __ Cbnz(objectAddrReg, &swapDoneLabel);
 
-  std::vector<Register> registersToSave;
+  std::vector<CPURegister> registersToSave;
 
   // Save registers in registersToMaybeSave only if they are not callee-saved
   // registers
@@ -3758,9 +3813,10 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   // TODO: make sure I'm handling register codes (and ART/VIXL conversion of
   // those codes) correctly.
   for (size_t i = 0; i < registersToMaybeSave.size(); i++) {
-    Register reg = registersToMaybeSave[i];
+    CPURegister reg = registersToMaybeSave[i];
+    CHECK(reg.IsRegister() || reg.IsFPRegister());
     int artCode = helpers::ARTRegCodeFromVIXL(reg.code());
-    if (!IsCoreCalleeSaveRegister(artCode) && !IsFloatingPointCalleeSaveRegister(i)) {
+    if (!IsCoreCalleeSaveRegister(artCode) && !IsFloatingPointCalleeSaveRegister(artCode)) {
       registersToSave.push_back(reg);
     }
   }
@@ -3776,7 +3832,7 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   for (size_t i = 0; i < GetNumberOfFloatingPointRegisters(); i++) {
     if (   !IsFloatingPointCalleeSaveRegister(i)
         && liveRegisterSet->ContainsFloatingPointRegister(i)) {
-      registersToSave.push_back(Register(i, kDRegSize));
+      registersToSave.push_back(FPRegister(i, kDRegSize));
     }
   }
 
@@ -3827,9 +3883,9 @@ void CodeGeneratorARM64::GenerateVirtualCall(HInvokeVirtual* invoke, Location te
   Offset class_offset = mirror::Object::ClassOffset();
   Offset entry_point = ArtMethod::EntryPointFromQuickCompiledCodeOffset(kArm64WordSize);
 
-  std::vector<Register> registersToSave;
-  registersToSave.push_back(receiver);
-  GenerateStubCheckAndSwapCode(receiver, registersToSave, invoke->GetLocations());
+  std::vector<CPURegister> registersToMaybeSave;
+  registersToMaybeSave.push_back(receiver);
+  GenerateStubCheckAndSwapCode(receiver, registersToMaybeSave, invoke->GetLocations());
 
   BlockPoolsScope block_pools(GetVIXLAssembler());
 

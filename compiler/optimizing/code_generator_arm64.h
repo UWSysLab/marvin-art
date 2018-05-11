@@ -586,7 +586,7 @@ class CodeGeneratorARM64 : public CodeGenerator {
   // additional registers to save, add documentation to make the purpose of
   // registersToMaybeSave clear.
   void GenerateStubCheckAndSwapCode(vixl::Register objectReg,
-                                    const std::vector<vixl::Register> & registersToMaybeSave,
+                                    const std::vector<vixl::CPURegister> & registersToMaybeSave,
                                     LocationSummary * locations);
 
  private:
