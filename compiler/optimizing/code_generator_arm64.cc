@@ -3722,6 +3722,64 @@ void CodeGeneratorARM64::GenerateStaticOrDirectCall(HInvokeStaticOrDirect* invok
   DCHECK(!IsLeafMethod());
 }
 
+void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
+    const std::vector<Register> & registersToSave) {
+  const int REGISTER_WIDTH = 8;
+
+  UseScratchRegisterScope temps(GetVIXLAssembler());
+
+  // Read stub flag of object
+  Register flagsReg = temps.AcquireW();
+  Register stubFlagReg = temps.AcquireW();
+  Offset flagsOffset(8);
+  MemOperand flagsOperand = HeapOperandFrom(LocationFrom(objectReg), flagsOffset);
+  Load(Primitive::kPrimBoolean, flagsReg, flagsOperand);
+  __ Lsr(stubFlagReg, flagsReg, 7);
+
+  // Skip stub check if stub flag is not set
+  vixl::Label stubCheckDoneLabel;
+  __ Cbz(stubFlagReg, &stubCheckDoneLabel);
+
+  // Load object address from stub
+  Offset objectAddrOffset(0);
+  MemOperand objectAddrOperand = HeapOperandFrom(LocationFrom(objectReg), objectAddrOffset);
+  Register realObjectAddrReg = temps.AcquireW();
+  Load(Primitive::kPrimInt, realObjectAddrReg, objectAddrOperand);
+
+  // Skip SwapInOnDemand() call if stub has a non-null object_address_
+  vixl::Label swapDoneLabel;
+  __ Cbnz(realObjectAddrReg, &swapDoneLabel);
+
+  // Save registers onto stack
+  int stackGrowthSize = ((registersToSave.size() * REGISTER_WIDTH / 16) + 1) * 16;
+  __ Sub(sp, sp, stackGrowthSize);
+  for (size_t i = 0; i < registersToSave.size(); i++) {
+    __ Str(registersToSave[i], MemOperand(sp, i * REGISTER_WIDTH));
+  }
+
+  // Call SwapInOnDemand()
+  Primitive::Type type = Primitive::kPrimNot;
+  InvokeRuntimeCallingConvention callingConvention;
+  MoveLocation(LocationFrom(callingConvention.GetRegisterAt(0)), LocationFrom(objectReg), type);
+  int32_t entryPointOffset = QUICK_ENTRY_POINT(pSwapInOnDemand);
+  __ Ldr(lr, MemOperand(tr, entryPointOffset));
+  __ Blr(lr);
+
+  // Restore registers from stack
+  for (size_t i = 0; i < registersToSave.size(); i++) {
+    __ Ldr(registersToSave[i], MemOperand(sp, i * REGISTER_WIDTH));
+  }
+  __ Add(sp, sp, stackGrowthSize);
+
+  __ Bind(&swapDoneLabel);
+
+  // Replace stub pointer with pointer to swapped-in object
+  Load(Primitive::kPrimInt, realObjectAddrReg, objectAddrOperand);
+  __ Mov(objectReg, realObjectAddrReg);
+
+  __ Bind(&stubCheckDoneLabel);
+}
+
 void CodeGeneratorARM64::GenerateVirtualCall(HInvokeVirtual* invoke, Location temp_in) {
   // Use the calling convention instead of the location of the receiver, as
   // intrinsics may have put the receiver in a different register. In the intrinsics
@@ -3734,6 +3792,10 @@ void CodeGeneratorARM64::GenerateVirtualCall(HInvokeVirtual* invoke, Location te
       invoke->GetVTableIndex(), kArm64PointerSize).SizeValue();
   Offset class_offset = mirror::Object::ClassOffset();
   Offset entry_point = ArtMethod::EntryPointFromQuickCompiledCodeOffset(kArm64WordSize);
+
+  std::vector<Register> registersToSave;
+  registersToSave.push_back(receiver);
+  GenerateStubCheckAndSwapCode(receiver, registersToSave);
 
   BlockPoolsScope block_pools(GetVIXLAssembler());
 

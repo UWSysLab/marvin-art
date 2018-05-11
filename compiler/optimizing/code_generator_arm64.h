@@ -569,6 +569,17 @@ class CodeGeneratorARM64 : public CodeGenerator {
   void GenerateImplicitNullCheck(HNullCheck* instruction);
   void GenerateExplicitNullCheck(HNullCheck* instruction);
 
+  // Generate code to check if the pointer in register objectReg points to a
+  // stub, and if it does, swap in the corresponding object on-demand if
+  // necessary and then replace the stub pointer in objectReg with a pointer
+  // to the swapped-in object.
+  //
+  // NOTE: this method is super hack-y and probably could be written more
+  // elegantly if I had a better understanding of the abstractions that VIXL
+  // and the optimizing compiler use for code generation.
+  void GenerateStubCheckAndSwapCode(vixl::Register objectReg,
+                                    const std::vector<vixl::Register> & registersTosave);
+
  private:
   // Factored implementation of GenerateFieldLoadWithBakerReadBarrier
   // and GenerateArrayLoadWithBakerReadBarrier.
