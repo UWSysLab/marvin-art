@@ -3743,12 +3743,12 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   // Load object address from stub
   Offset objectAddrOffset(0);
   MemOperand objectAddrOperand = HeapOperandFrom(LocationFrom(objectReg), objectAddrOffset);
-  Register realObjectAddrReg = temps.AcquireW();
-  Load(Primitive::kPrimInt, realObjectAddrReg, objectAddrOperand);
+  Register objectAddrReg = temps.AcquireW();
+  Load(Primitive::kPrimInt, objectAddrReg, objectAddrOperand);
 
   // Skip SwapInOnDemand() call if stub has a non-null object_address_
   vixl::Label swapDoneLabel;
-  __ Cbnz(realObjectAddrReg, &swapDoneLabel);
+  __ Cbnz(objectAddrReg, &swapDoneLabel);
 
   std::vector<Register> registersToSave;
 
@@ -3809,8 +3809,7 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   __ Bind(&swapDoneLabel);
 
   // Replace stub pointer with pointer to swapped-in object
-  Load(Primitive::kPrimInt, realObjectAddrReg, objectAddrOperand);
-  __ Mov(objectReg, realObjectAddrReg);
+  Load(Primitive::kPrimInt, Register(objectReg.code(), kWRegSize), objectAddrOperand);
 
   __ Bind(&stubCheckDoneLabel);
 }
