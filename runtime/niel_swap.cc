@@ -134,6 +134,11 @@ int swapfileSize = 0;
 // Not locked but only modified in Heap::UpdateProcessState() and read in Tasks
 bool appInForeground = true;
 
+// Not locked but will only ever switch from false to true, and it shouldn't
+// cause any correctness issues if an app thread incorrectly reads it as false
+// for a little while after it has changed
+bool swapEnabled = false;
+
 // Locked by swapFileMutex
 std::fstream swapfile;
 
@@ -154,6 +159,8 @@ class WriteTask : public gc::HeapTask {
     WriteTask(uint64_t target_time) : gc::HeapTask(target_time) { }
 
     virtual void Run(Thread * self) {
+        CHECK(swapEnabled);
+
         bool done = false;
         uint64_t startTime = NanoTime();
         bool ioError = false;
@@ -572,6 +579,10 @@ void FreeFromLargeObjectSpace(Thread * self, gc::Heap * heap, mirror::Object * o
 }
 
 void SwapObjectsOut(Thread * self, gc::Heap * heap) {
+    if (!swapEnabled) {
+        return;
+    }
+
     // Remove any object from swapOutSet whose NoSwapFlag was set since it was
     // added (currently, this only happens because the object was marked for
     // exclusion)
@@ -653,6 +664,10 @@ void SwapObjectsOut(Thread * self, gc::Heap * heap) {
 }
 
 void RecordForwardedObject(Thread * self, mirror::Object * obj, mirror::Object * forwardAddress) {
+    if (!swapEnabled) {
+        return;
+    }
+
     swapStateMutex.SharedLock(self);
     if (objectOffsetMap.count(obj)) {
         semiSpaceRemappingTable[obj] = forwardAddress;
@@ -661,6 +676,10 @@ void RecordForwardedObject(Thread * self, mirror::Object * obj, mirror::Object *
 }
 
 void SemiSpaceUpdateDataStructures(Thread * self) {
+    if (!swapEnabled) {
+        return;
+    }
+
     /*
      * We call replaceDataStructurePointers() with removeUntouched set to true
      * because we assume that if an object/stub is present in the
@@ -727,6 +746,8 @@ mirror::Object * swapInObject(Thread * self, gc::Heap * heap, Stub * stub,
 //TODO: make sure obj doesn't get freed during GC as long as stub isn't freed,
 //      but is freed when stub is freed
 void SwapInOnDemand(Stub * stub) {
+    CHECK(swapEnabled);
+
     gc::Heap * heap = getHeapChecked();
     CHECK(heap->GetRosAllocSpace()->Contains((mirror::Object *)stub));
 
@@ -746,6 +767,10 @@ void SwapInOnDemand(Stub * stub) {
 }
 
 void CleanUpOnDemandSwaps(gc::Heap * heap) REQUIRES(Locks::mutator_lock_) {
+    if (!swapEnabled) {
+        return;
+    }
+
     doingSwapInCleanup = true;
     Thread * self = Thread::Current();
 
@@ -767,6 +792,10 @@ void CleanUpOnDemandSwaps(gc::Heap * heap) REQUIRES(Locks::mutator_lock_) {
 }
 
 void SwapObjectsIn(gc::Heap * heap) {
+    if (!swapEnabled) {
+        return;
+    }
+
     ScopedTimer timer("swapping objects back in");
     CHECK_EQ(remappingTable.size(), 0u);
 
@@ -806,6 +835,10 @@ gc::TaskProcessor * getTaskProcessorChecked() {
 }
 
 void GcRecordFree(Thread * self, mirror::Object * object) {
+    if (!swapEnabled) {
+        return;
+    }
+
     /*
      * The correctness of this check depends on upon several assumptions:
      * 1) Only the garbage collectors and my swapping code call Free() on the
@@ -894,6 +927,7 @@ void InitIfNecessary(Thread * self) {
         return;
     }
 
+    swapEnabled = true;
     taskProcessor->AddTask(Thread::Current(), new WriteTask(NanoTime()));
 
     LOG(INFO) << "NIEL successfully initialized swap for package " << packageName;
@@ -944,6 +978,7 @@ bool copyFile(const std::string & fromFileName, const std::string & toFileName) 
 }
 
 void CompactSwapFile(Thread * self) {
+    CHECK(swapEnabled);
     LOG(INFO) << "NIEL compacting swap file";
 
     std::string swapfilePath("/data/data/" + getPackageName() + "/swapfile");
@@ -1034,6 +1069,10 @@ void CompactSwapFile(Thread * self) {
 }
 
 void CheckAndUpdate(gc::collector::GarbageCollector * gc, mirror::Object * object) {
+    if (!swapEnabled) {
+        return;
+    }
+
     if (gc->GetGcType() != gc::collector::kGcTypePartial) {
         return;
     }
