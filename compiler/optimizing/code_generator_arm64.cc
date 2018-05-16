@@ -3189,11 +3189,6 @@ void InstructionCodeGeneratorARM64::VisitInstanceOf(HInstanceOf* instruction) {
   uint32_t component_offset = mirror::Class::ComponentTypeOffset().Int32Value();
   uint32_t primitive_offset = mirror::Class::PrimitiveTypeOffset().Int32Value();
 
-  std::vector<CPURegister> registersToMaybeSave;
-  registersToMaybeSave.push_back(obj);
-  registersToMaybeSave.push_back(cls);
-  codegen_->GenerateStubCheckAndSwapCode(obj, registersToMaybeSave, locations);
-
   vixl::Label done, zero;
   SlowPathCodeARM64* slow_path = nullptr;
 
@@ -3202,6 +3197,11 @@ void InstructionCodeGeneratorARM64::VisitInstanceOf(HInstanceOf* instruction) {
   if (instruction->MustDoNullCheck()) {
     __ Cbz(obj, &zero);
   }
+
+  std::vector<CPURegister> registersToMaybeSave;
+  registersToMaybeSave.push_back(obj);
+  registersToMaybeSave.push_back(cls);
+  codegen_->GenerateStubCheckAndSwapCode(obj, registersToMaybeSave, locations);
 
   // /* HeapReference<Class> */ out = obj->klass_
   GenerateReferenceLoadTwoRegisters(instruction, out_loc, obj_loc, class_offset, maybe_temp_loc);
@@ -3381,11 +3381,6 @@ void InstructionCodeGeneratorARM64::VisitCheckCast(HCheckCast* instruction) {
   uint32_t component_offset = mirror::Class::ComponentTypeOffset().Int32Value();
   uint32_t primitive_offset = mirror::Class::PrimitiveTypeOffset().Int32Value();
 
-  std::vector<CPURegister> registersToMaybeSave;
-  registersToMaybeSave.push_back(obj);
-  registersToMaybeSave.push_back(cls);
-  codegen_->GenerateStubCheckAndSwapCode(obj, registersToMaybeSave, locations);
-
   bool is_type_check_slow_path_fatal =
       (type_check_kind == TypeCheckKind::kExactCheck ||
        type_check_kind == TypeCheckKind::kAbstractClassCheck ||
@@ -3402,6 +3397,11 @@ void InstructionCodeGeneratorARM64::VisitCheckCast(HCheckCast* instruction) {
   if (instruction->MustDoNullCheck()) {
     __ Cbz(obj, &done);
   }
+
+  std::vector<CPURegister> registersToMaybeSave;
+  registersToMaybeSave.push_back(obj);
+  registersToMaybeSave.push_back(cls);
+  codegen_->GenerateStubCheckAndSwapCode(obj, registersToMaybeSave, locations);
 
   // /* HeapReference<Class> */ temp = obj->klass_
   GenerateReferenceLoadTwoRegisters(instruction, temp_loc, obj_loc, class_offset, maybe_temp2_loc);
