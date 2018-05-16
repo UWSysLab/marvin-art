@@ -3790,10 +3790,23 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   MemOperand flagsOperand = HeapOperandFrom(LocationFrom(objectReg), flagsOffset);
   Load(Primitive::kPrimBoolean, flagsReg, flagsOperand);
   __ Lsr(stubFlagReg, flagsReg, 7);
+  temps.Release(flagsReg);
 
   // Skip stub check if stub flag is not set
   vixl::Label stubCheckDoneLabel;
   __ Cbz(stubFlagReg, &stubCheckDoneLabel);
+  temps.Release(stubFlagReg);
+
+  // Load magic num from stub
+  Register magicNumReg = temps.AcquireW();
+  Offset magicNumOffset(12);
+  MemOperand magicNumOperand = HeapOperandFrom(LocationFrom(objectReg), magicNumOffset);
+  Load(Primitive::kPrimInt, magicNumReg, magicNumOperand);
+
+  // Skip stub check if magic num is not set
+  __ Cmp(magicNumReg, STUB_MAGIC_NUM);
+  __ B(ne, &stubCheckDoneLabel);
+  temps.Release(magicNumReg);
 
   // Load object address from stub
   Offset objectAddrOffset(0);
