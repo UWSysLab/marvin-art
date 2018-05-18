@@ -3782,6 +3782,8 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   const int REGISTER_WIDTH = 8;
 
   UseScratchRegisterScope temps(GetVIXLAssembler());
+  vixl::Label stubCheckDoneLabel;
+  vixl::Label swapDoneLabel;
 
   // Read stub flag of object
   Register flagsReg = temps.AcquireW();
@@ -3793,7 +3795,6 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   temps.Release(flagsReg);
 
   // Skip stub check if stub flag is not set
-  vixl::Label stubCheckDoneLabel;
   __ Cbz(stubFlagReg, &stubCheckDoneLabel);
   temps.Release(stubFlagReg);
 
@@ -3815,38 +3816,67 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   Load(Primitive::kPrimInt, objectAddrReg, objectAddrOperand);
 
   // Skip SwapInOnDemand() call if stub has a non-null object_address_
-  vixl::Label swapDoneLabel;
   __ Cbnz(objectAddrReg, &swapDoneLabel);
 
-  std::vector<CPURegister> registersToSave;
+  std::set<int> coreRegCodes; // VIXL register codes
+  std::set<int> fpRegCodes;   // VIXL register codes
 
   // Save registers in registersToMaybeSave only if they are not callee-saved
-  // registers
+  // registers.
   //
-  // TODO: make sure I'm handling register codes (and ART/VIXL conversion of
-  // those codes) correctly.
+  // TODO: if we stick with just saving all parameter registers, figure out if
+  // passing in the registersToMaybeSave list is still necessary.
+  //
+  // TODO: make sure I'm handling conversion between VIXL and ART register
+  // codes correctly.
   for (size_t i = 0; i < registersToMaybeSave.size(); i++) {
     CPURegister reg = registersToMaybeSave[i];
     CHECK(reg.IsRegister() || reg.IsFPRegister());
     int artCode = helpers::ARTRegCodeFromVIXL(reg.code());
-    if (!IsCoreCalleeSaveRegister(artCode) && !IsFloatingPointCalleeSaveRegister(artCode)) {
-      registersToSave.push_back(reg);
+    if (reg.IsRegister() && !IsCoreCalleeSaveRegister(artCode)) {
+      coreRegCodes.insert(reg.code());
+    }
+    else if (reg.IsFPRegister() && !IsFloatingPointCalleeSaveRegister(artCode)) {
+      fpRegCodes.insert(reg.code());
     }
   }
 
-  // Add registers marked as live by the LocationSummary to the registersToSave
-  // list
+  // Mark registers reported as live by the LocationSummary to be saved.
   RegisterSet * liveRegisterSet = locations->GetLiveRegisters();
   for (size_t i = 0; i < GetNumberOfCoreRegisters(); i++) {
     if (!IsCoreCalleeSaveRegister(i) && liveRegisterSet->ContainsCoreRegister(i)) {
-      registersToSave.push_back(Register(i, kXRegSize));
+      coreRegCodes.insert(i);
     }
   }
   for (size_t i = 0; i < GetNumberOfFloatingPointRegisters(); i++) {
     if (   !IsFloatingPointCalleeSaveRegister(i)
         && liveRegisterSet->ContainsFloatingPointRegister(i)) {
-      registersToSave.push_back(FPRegister(i, kDRegSize));
+      fpRegCodes.insert(i);
     }
+  }
+
+  // Mark all parameter registers to be saved, because sometimes there are live
+  // parameter registers that are not included in the LocationSummary's live
+  // register set.
+  //
+  // TODO: Figure out if there's a way to identify those missing live parameter
+  // registers.
+  for (int i = 0; i < 8; i++) {
+    coreRegCodes.insert(i);
+  }
+  for (int i = 0; i < 8; i++) {
+    fpRegCodes.insert(i);
+  }
+
+  // Populate the registersToSave list using the sets of register codes marked
+  // to be saved.
+  std::vector<CPURegister> registersToSave;
+
+  for (auto it = coreRegCodes.begin(); it != coreRegCodes.end(); it++) {
+    registersToSave.push_back(Register::XRegFromCode(*it));
+  }
+  for (auto it = fpRegCodes.begin(); it != fpRegCodes.end(); it++) {
+    registersToSave.push_back(VRegister::DRegFromCode(*it));
   }
 
   // Save registers onto stack
