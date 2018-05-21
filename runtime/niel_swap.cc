@@ -104,6 +104,10 @@ void patchStubReferences(Thread * self, gc::Heap * heap) REQUIRES(Locks::mutator
  * Determines whether an object and the objects referenced by it should be
  * excluded from being swapped out. The caller is responsible for setting and
  * clearing the object's IgnoreReadFlag before and after calling this function.
+ *
+ * Note: currently, this method does not exclude any objects from being swapped
+ * out, but I am leaving this code path in place in case we need to exclude
+ * objects in the future.
  */
 bool shouldExcludeObjectAndMembers(mirror::Object * obj) SHARED_REQUIRES(Locks::mutator_lock_);
 
@@ -389,13 +393,8 @@ int writeToSwapFile(Thread * self, gc::Heap * heap, mirror::Object * object, boo
     return result;
 }
 
-bool shouldExcludeObjectAndMembers(mirror::Object * obj) {
-    std::string className = PrettyClass(obj->GetClass());
-    bool excluded =
-           className.find("java.lang.Class<android") == 0
-        || className.find("java.lang.Class<com.android") == 0
-    ;
-    return excluded;
+bool shouldExcludeObjectAndMembers(mirror::Object * obj ATTRIBUTE_UNUSED) {
+    return false;
 }
 
 class ExcludeVisitor {
