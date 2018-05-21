@@ -3892,8 +3892,17 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   // Save registers onto stack
   if (registersToSave.size() > 0) {
     __ Sub(sp, sp, stackGrowthSize);
-    for (size_t i = 0; i < registersToSave.size(); i++) {
-      __ Str(registersToSave[i], MemOperand(sp, i * REGISTER_WIDTH));
+
+    size_t i = 0;
+    while (i < registersToSave.size()) {
+      if (i < registersToSave.size() - 1) {
+        __ Stp(registersToSave[i], registersToSave[i + 1], MemOperand(sp, i * REGISTER_WIDTH));
+        i += 2;
+      }
+      else {
+        __ Str(registersToSave[i], MemOperand(sp, i * REGISTER_WIDTH));
+        i++;
+      }
     }
   }
 
@@ -3907,9 +3916,18 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
 
   // Restore registers from stack
   if (registersToSave.size() > 0) {
-    for (size_t i = 0; i < registersToSave.size(); i++) {
-      __ Ldr(registersToSave[i], MemOperand(sp, i * REGISTER_WIDTH));
+    size_t i = 0;
+    while (i < registersToSave.size()) {
+      if (i < registersToSave.size() - 1) {
+        __ Ldp(registersToSave[i], registersToSave[i + 1], MemOperand(sp, i * REGISTER_WIDTH));
+        i += 2;
+      }
+      else {
+        __ Ldr(registersToSave[i], MemOperand(sp, i * REGISTER_WIDTH));
+        i++;
+      }
     }
+
     __ Add(sp, sp, stackGrowthSize);
   }
 
