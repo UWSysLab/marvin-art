@@ -3879,10 +3879,18 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
     registersToSave.push_back(VRegister::DRegFromCode(*it));
   }
 
-  // Save registers onto stack
+  // Calculate number of bytes to grow the stack
   int stackGrowthSize = 0;
   if (registersToSave.size() > 0) {
-    stackGrowthSize = ((registersToSave.size() * REGISTER_WIDTH / 16) + 1) * 16;
+    stackGrowthSize = registersToSave.size() * REGISTER_WIDTH;
+    // clamp to nearest multiple of 16
+    if (stackGrowthSize % 16 > 0) {
+      stackGrowthSize = stackGrowthSize + (16 - stackGrowthSize % 16);
+    }
+  }
+
+  // Save registers onto stack
+  if (registersToSave.size() > 0) {
     __ Sub(sp, sp, stackGrowthSize);
     for (size_t i = 0; i < registersToSave.size(); i++) {
       __ Str(registersToSave[i], MemOperand(sp, i * REGISTER_WIDTH));
