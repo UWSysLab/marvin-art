@@ -1734,6 +1734,7 @@ void InstructionCodeGeneratorARM64::HandleFieldSet(HInstruction* instruction,
   }
 
   codegen_->GenerateIncrWriteCounter(obj);
+  codegen_->GenerateSetDirtyBit(obj);
 }
 
 void InstructionCodeGeneratorARM64::HandleBinaryOp(HBinaryOperation* instr) {
@@ -3980,6 +3981,19 @@ void CodeGeneratorARM64::GenerateIncrWriteCounter(Register objectReg) {
   __ Add(temp, temp, 1);
   __ Strb(temp, MemOperand(objectReg, writeCounterOffset));
   __ Bind(&doneLabel);
+}
+
+void CodeGeneratorARM64::GenerateSetDirtyBit(Register objectReg) {
+  UseScratchRegisterScope temps(GetVIXLAssembler());
+  Register flagsReg = temps.AcquireW();
+  Register temp = temps.AcquireW();
+  int flagsOffset = 8;
+
+  __ Add(flagsReg, objectReg, flagsOffset);
+
+  __ Ldarb(temp, MemOperand(flagsReg));
+  __ Orr(temp, temp, 0x1);
+  __ Stlrb(temp, MemOperand(flagsReg));
 }
 
 void CodeGeneratorARM64::GenerateVirtualCall(HInvokeVirtual* invoke, Location temp_in) {

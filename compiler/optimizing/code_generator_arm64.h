@@ -593,8 +593,24 @@ class CodeGeneratorARM64 : public CodeGenerator {
   // set, increment the read counter byte in the object header.
   void GenerateIncrReadCounter(vixl::Register objectReg);
 
-  // Generate code to increment the write counter byte in the object header.
+  // Generate code to increment the write counter byte in an object header.
   void GenerateIncrWriteCounter(vixl::Register objectReg);
+
+  // Generate code to set the dirty bit in an object header.
+  //
+  // The current implementation of this method generates code that performs the
+  // update to the object's x_flags_ byte with acquire-release semantics but
+  // does not performm the update atomically. The AArch64 instruction LDEORALB
+  // could be used to perform an atomic fetch-or with acquire-release
+  // semantics, but VIXL does not appear to have support for LDEORALB.
+  //
+  // The current implementation could result in lost updates to other flags,
+  // but due to the nature of the other flags and where they are used, I think
+  // that the worst thing that might happen in practice is that reads may be
+  // incorrectly ignored/not ignored due to lost updates to the IgnoreReadFlag.
+  //
+  // TODO: Change this method to use LDEORALB to perform the update atomically.
+  void GenerateSetDirtyBit(vixl::Register objectReg);
 
  private:
   // Factored implementation of GenerateFieldLoadWithBakerReadBarrier
