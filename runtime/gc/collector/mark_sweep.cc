@@ -146,7 +146,7 @@ void MarkSweep::InitializePhase() {
 void MarkSweep::RunPhases() {
   Thread* self = Thread::Current();
   LOG(INFO) << "NIEL running MarkSweep GC with name " << GetName();
-  niel::inst::StartAccessCount(this);
+  NIEL_INST_START_ACCESS_COUNT(this);
   InitializePhase();
   Locks::mutator_lock_->AssertNotHeld(self);
   if (IsConcurrent()) {
@@ -174,7 +174,7 @@ void MarkSweep::RunPhases() {
   }
   GetHeap()->PostGcVerification(this);
   FinishPhase();
-  niel::inst::FinishAccessCount(this);
+  NIEL_INST_FINISH_ACCESS_COUNT(this);
 }
 
 void MarkSweep::ProcessReferences(Thread* self) {
@@ -1429,7 +1429,7 @@ void MarkSweep::ProcessMarkStack(bool paused) {
       }
       DCHECK(obj != nullptr);
       ScanObject(obj);
-      niel::inst::CountAccess(this, obj);
+      NIEL_INST_COUNT_ACCESS(this, obj);
       niel::swap::CheckAndUpdate(this, obj);
     }
   }

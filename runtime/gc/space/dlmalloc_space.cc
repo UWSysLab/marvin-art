@@ -223,7 +223,7 @@ size_t DlMallocSpace::FreeList(Thread* self, size_t num_ptrs, mirror::Object** p
   {
     MutexLock mu(self, lock_);
     mspace_bulk_free(mspace_, reinterpret_cast<void**>(ptrs), num_ptrs);
-    niel::inst::RecordFree(self, this, bytes_freed, num_ptrs);
+    NIEL_INST_RECORD_FREE(self, this, bytes_freed, num_ptrs);
     return bytes_freed;
   }
 }

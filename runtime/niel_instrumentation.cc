@@ -118,8 +118,8 @@ void RecordRosAllocAlloc(Thread * self, size_t size, RosAllocAllocType type) {
         break;
     }
 
-    maybePrintLog();
     instMutex.ExclusiveUnlock(self);
+    maybePrintLog();
 }
 
 void RecordRosAllocFree(Thread * self, size_t size, RosAllocFreeType type) {
@@ -136,8 +136,8 @@ void RecordRosAllocFree(Thread * self, size_t size, RosAllocFreeType type) {
         break;
     }
 
-    maybePrintLog();
     instMutex.ExclusiveUnlock(self);
+    maybePrintLog();
 }
 
 void RecordAlloc(Thread * self, gc::space::Space * space, size_t size) {
@@ -149,8 +149,8 @@ void RecordAlloc(Thread * self, gc::space::Space * space, size_t size) {
     totalAllocCounts[name]++;
     totalAllocSizes[name] += size;
 
-    maybePrintLog();
     instMutex.ExclusiveUnlock(self);
+    maybePrintLog();
 }
 
 void RecordFree(Thread * self, gc::space::Space * space, size_t size, int count) {
@@ -160,8 +160,8 @@ void RecordFree(Thread * self, gc::space::Space * space, size_t size, int count)
     currentAllocCounts[name] -= count;
     currentAllocSizes[name] -= size;
 
-    maybePrintLog();
     instMutex.ExclusiveUnlock(self);
+    maybePrintLog();
 }
 
 void StartAccessCount(gc::collector::GarbageCollector * gc) {
@@ -356,8 +356,8 @@ void FinishAccessCount(gc::collector::GarbageCollector * gc) {
 void maybePrintLog() {
     time_t currentTime = time(NULL);
     if (difftime(currentTime, lastLogTime) > LOG_INTERVAL_SECONDS) {
-        //printAllocCounts();
-        //printHeap();
+        printAllocCounts();
+        printHeap();
         lastLogTime = currentTime;
     }
 }

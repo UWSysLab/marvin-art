@@ -173,7 +173,7 @@ mirror::Object* LargeObjectMapSpace::Alloc(Thread* self, size_t num_bytes,
   total_bytes_allocated_ += allocation_size;
   ++num_objects_allocated_;
   ++total_objects_allocated_;
-  niel::inst::RecordAlloc(self, this, allocation_size);
+  NIEL_INST_RECORD_ALLOC(self, this, allocation_size);
   return obj;
 }
 
@@ -208,7 +208,7 @@ size_t LargeObjectMapSpace::Free(Thread* self, mirror::Object* ptr) {
   --num_objects_allocated_;
   delete mem_map;
   large_objects_.erase(it);
-  niel::inst::RecordFree(self, this, allocation_size, 1);
+  NIEL_INST_RECORD_FREE(self, this, allocation_size, 1);
   return allocation_size;
 }
 
@@ -469,7 +469,7 @@ size_t FreeListSpace::Free(Thread* self, mirror::Object* obj) {
     // Can't disallow reads since we use them to find next chunks during coalescing.
     mprotect(obj, allocation_size, PROT_READ);
   }
-  niel::inst::RecordFree(self, this, allocation_size, 1);
+  NIEL_INST_RECORD_FREE(self, this, allocation_size, 1);
   return allocation_size;
 }
 
@@ -538,7 +538,7 @@ mirror::Object* FreeListSpace::Alloc(Thread* self, size_t num_bytes, size_t* byt
   }
   new_info->SetPrevFreeBytes(0);
   new_info->SetByteSize(allocation_size, false);
-  niel::inst::RecordAlloc(self, this, allocation_size);
+  NIEL_INST_RECORD_ALLOC(self, this, allocation_size);
   return obj;
 }
 
