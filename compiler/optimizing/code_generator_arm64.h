@@ -589,6 +589,13 @@ class CodeGeneratorARM64 : public CodeGenerator {
                                     const std::vector<vixl::CPURegister> & registersToMaybeSave,
                                     LocationSummary * locations);
 
+  // Generate code to check the IgnoreReadFlag of an object, and if it is not
+  // set, increment the read counter byte in the object header.
+  void GenerateIncrReadCounter(vixl::Register objectReg);
+
+  // Generate code to increment the write counter byte in the object header.
+  void GenerateIncrWriteCounter(vixl::Register objectReg);
+
  private:
   // Factored implementation of GenerateFieldLoadWithBakerReadBarrier
   // and GenerateArrayLoadWithBakerReadBarrier.

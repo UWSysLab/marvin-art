@@ -1637,6 +1637,8 @@ void InstructionCodeGeneratorARM64::HandleFieldGet(HInstruction* instruction,
                                          registersToMaybeSave,
                                          locations);
 
+  codegen_->GenerateIncrReadCounter(InputRegisterAt(instruction, 0));
+
   if (field_type == Primitive::kPrimNot && kEmitCompilerReadBarrier && kUseBakerReadBarrier) {
     // Object FieldGet with Baker's read barrier case.
     MacroAssembler* masm = GetVIXLAssembler();
@@ -1730,6 +1732,8 @@ void InstructionCodeGeneratorARM64::HandleFieldSet(HInstruction* instruction,
   if (CodeGenerator::StoreNeedsWriteBarrier(field_type, instruction->InputAt(1))) {
     codegen_->MarkGCCard(obj, Register(value), value_can_be_null);
   }
+
+  codegen_->GenerateIncrWriteCounter(obj);
 }
 
 void InstructionCodeGeneratorARM64::HandleBinaryOp(HBinaryOperation* instr) {
@@ -3937,6 +3941,45 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   Load(Primitive::kPrimInt, Register(objectReg.code(), kWRegSize), objectAddrOperand);
 
   __ Bind(&stubCheckDoneLabel);
+}
+
+void CodeGeneratorARM64::GenerateIncrReadCounter(Register objectReg) {
+  UseScratchRegisterScope temps(GetVIXLAssembler());
+  vixl::Label doneLabel;
+
+  Register temp = temps.AcquireW();
+  int flagsOffset = 8;
+  int readCounterOffset = 10;
+  int ignoreReadFlagOffset = 1; // within x_flags_ byte
+
+  __ Ldrb(temp, MemOperand(objectReg, flagsOffset));
+  __ Lsr(temp, temp, ignoreReadFlagOffset);
+  __ And(temp, temp, 0x1);
+  __ Cbnz(temp, &doneLabel);
+
+  __ Ldrb(temp, MemOperand(objectReg, readCounterOffset));
+  __ Cmp(temp, 255);
+  __ B(ge, &doneLabel);
+
+  __ Add(temp, temp, 1);
+  __ Strb(temp, MemOperand(objectReg, readCounterOffset));
+
+  __ Bind(&doneLabel);
+}
+
+void CodeGeneratorARM64::GenerateIncrWriteCounter(Register objectReg) {
+  UseScratchRegisterScope temps(GetVIXLAssembler());
+  vixl::Label doneLabel;
+
+  Register temp = temps.AcquireW();
+  int writeCounterOffset = 11;
+
+  __ Ldrb(temp, MemOperand(objectReg, writeCounterOffset));
+  __ Cmp(temp, 255);
+  __ B(ge, &doneLabel);
+  __ Add(temp, temp, 1);
+  __ Strb(temp, MemOperand(objectReg, writeCounterOffset));
+  __ Bind(&doneLabel);
 }
 
 void CodeGeneratorARM64::GenerateVirtualCall(HInvokeVirtual* invoke, Location temp_in) {
