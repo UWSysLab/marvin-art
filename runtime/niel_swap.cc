@@ -569,7 +569,7 @@ void replaceDataStructurePointers(Thread * self, const std::map<void *, void *> 
 
 void FreeFromRosAllocSpace(Thread * self, gc::Heap * heap, mirror::Object * obj) {
     heap->GetRosAllocSpace()->GetLiveBitmap()->Clear(obj);
-    heap->GetRosAllocSpace()->Free(self, obj);
+    heap->GetRosAllocSpace()->FreeList(self, 1, &obj);
 }
 
 void FreeFromLargeObjectSpace(Thread * self, gc::Heap * heap, mirror::Object * obj) {
