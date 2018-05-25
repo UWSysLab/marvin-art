@@ -820,6 +820,15 @@ void SwapObjectsIn(gc::Heap * heap) {
         }
     }
     swapStateMutex.SharedUnlock(self);
+
+    // If any objects were swapped in on-demand in the background, we're
+    // cleaning them up in this function, so we need to delete their stubs from
+    // the swappedInSet and swappedInMap
+    swappedInSetMutex.ExclusiveLock(self);
+    swappedInSet.clear();
+    swappedInMap.clear();
+    swappedInSetMutex.ExclusiveUnlock(self);
+
     patchStubReferences(self, heap);
     remappingTable.clear();
     doingSwapInCleanup = false;
