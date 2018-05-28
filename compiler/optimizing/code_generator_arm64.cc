@@ -3790,38 +3790,38 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   vixl::Label stubCheckDoneLabel;
   vixl::Label swapDoneLabel;
 
+  // If no temp register is available, the UseScratchRegisterScope will return
+  // a register of type kNoRegister, but when it gets converted to a
+  // W register, its type is lost, and it becomes a normal W register with
+  // code 0
+  Register temp = temps.AcquireW();
+  CHECK(temp.code() != 0);
+
   // Read stub flag of object
-  Register flagsReg = temps.AcquireW();
-  Register stubFlagReg = temps.AcquireW();
   Offset flagsOffset(8);
   MemOperand flagsOperand = HeapOperandFrom(LocationFrom(objectReg), flagsOffset);
-  Load(Primitive::kPrimBoolean, flagsReg, flagsOperand);
-  __ Lsr(stubFlagReg, flagsReg, 7);
-  temps.Release(flagsReg);
+  Load(Primitive::kPrimBoolean, temp, flagsOperand); // temp now holds flags byte
+  __ Lsr(temp, temp, 7); // temp now holds stub flag
 
   // Skip stub check if stub flag is not set
-  __ Cbz(stubFlagReg, &stubCheckDoneLabel);
-  temps.Release(stubFlagReg);
+  __ Cbz(temp, &stubCheckDoneLabel);
 
   // Load magic num from stub
-  Register magicNumReg = temps.AcquireW();
   Offset magicNumOffset(12);
   MemOperand magicNumOperand = HeapOperandFrom(LocationFrom(objectReg), magicNumOffset);
-  Load(Primitive::kPrimInt, magicNumReg, magicNumOperand);
+  Load(Primitive::kPrimInt, temp, magicNumOperand); // temp now holds magic num
 
   // Skip stub check if magic num is not set
-  __ Cmp(magicNumReg, STUB_MAGIC_NUM);
+  __ Cmp(temp, STUB_MAGIC_NUM);
   __ B(ne, &stubCheckDoneLabel);
-  temps.Release(magicNumReg);
 
   // Load object address from stub
   Offset objectAddrOffset(0);
   MemOperand objectAddrOperand = HeapOperandFrom(LocationFrom(objectReg), objectAddrOffset);
-  Register objectAddrReg = temps.AcquireW();
-  Load(Primitive::kPrimInt, objectAddrReg, objectAddrOperand);
+  Load(Primitive::kPrimInt, temp, objectAddrOperand); // temp now holds object_address_
 
   // Skip SwapInOnDemand() call if stub has a non-null object_address_
-  __ Cbnz(objectAddrReg, &swapDoneLabel);
+  __ Cbnz(temp, &swapDoneLabel);
 
   std::set<int> coreRegCodes; // VIXL register codes
   std::set<int> fpRegCodes;   // VIXL register codes
