@@ -7,8 +7,6 @@
 #include "base/mutex.h"
 #include "globals.h"
 
-#define STUB_MAGIC_NUM 152342354
-
 namespace art {
 
 namespace mirror {
@@ -56,10 +54,6 @@ class Stub {
 
     void SetObjectAddress(mirror::Object * obj) {
         object_address_ = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(obj));
-    }
-
-    uint32_t GetPaddingC() {
-        return padding_c_;
     }
 
   private:

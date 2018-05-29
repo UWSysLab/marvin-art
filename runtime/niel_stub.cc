@@ -86,7 +86,7 @@ void Stub::PopulateFrom(mirror::Object * object) {
     SetObjectAddress(object);
     forwarding_address_ = 0;
     padding_b_ = 0;
-    padding_c_ = STUB_MAGIC_NUM;
+    padding_c_ = 0;
 
     num_refs_ = CountReferences(object);
 

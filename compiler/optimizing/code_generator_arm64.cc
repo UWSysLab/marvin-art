@@ -3811,15 +3811,6 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   // Skip stub check if stub flag is not set
   __ Cbz(temp, &stubCheckDoneLabel);
 
-  // Load magic num from stub
-  Offset magicNumOffset(12);
-  MemOperand magicNumOperand = HeapOperandFrom(LocationFrom(objectReg), magicNumOffset);
-  Load(Primitive::kPrimInt, temp, magicNumOperand); // temp now holds magic num
-
-  // Skip stub check if magic num is not set
-  __ Cmp(temp, STUB_MAGIC_NUM);
-  __ B(ne, &stubCheckDoneLabel);
-
   // Load object address from stub
   Offset objectAddrOffset(0);
   MemOperand objectAddrOperand = HeapOperandFrom(LocationFrom(objectReg), objectAddrOffset);

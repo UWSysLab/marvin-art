@@ -29,29 +29,19 @@
 #define SWAP_PREAMBLE(func_name, type_name, ...) \
 if (UNLIKELY(GetStubFlag())) { \
   niel::swap::Stub * stub = (niel::swap::Stub *)this; \
-  if (stub->GetPaddingC() == STUB_MAGIC_NUM) { \
-    if (UNLIKELY(stub->GetObjectAddress() == nullptr)) { \
-      niel::swap::SwapInOnDemand(stub); \
-    } \
-    return ((type_name *)(stub->GetObjectAddress()))->func_name(__VA_ARGS__); \
+  if (UNLIKELY(stub->GetObjectAddress() == nullptr)) { \
+    niel::swap::SwapInOnDemand(stub); \
   } \
-  else { \
-    LOG(INFO) << "NIELDEBUG stub " << stub << " does not have magic num set"; \
-  } \
+  return ((type_name *)(stub->GetObjectAddress()))->func_name(__VA_ARGS__); \
 }
 
 #define SWAP_PREAMBLE_TEMPLATE(func_name, type_name, template_args, ...) \
 if (UNLIKELY(GetStubFlag())) { \
   niel::swap::Stub * stub = (niel::swap::Stub *)this; \
-  if (stub->GetPaddingC() == STUB_MAGIC_NUM) { \
-    if (UNLIKELY(stub->GetObjectAddress() == nullptr)) { \
-      niel::swap::SwapInOnDemand(stub); \
-    } \
-    return ((type_name *)(stub->GetObjectAddress()))->func_name<template_args>(__VA_ARGS__); \
+  if (UNLIKELY(stub->GetObjectAddress() == nullptr)) { \
+    niel::swap::SwapInOnDemand(stub); \
   } \
-  else { \
-    LOG(INFO) << "NIELDEBUG stub " << stub << " does not have magic num set"; \
-  } \
+  return ((type_name *)(stub->GetObjectAddress()))->func_name<template_args>(__VA_ARGS__); \
 }
 
 #define GATHER_TEMPLATE_ARGS(...) __VA_ARGS__
