@@ -2084,6 +2084,7 @@ void InstructionCodeGeneratorARM64::VisitArrayGet(HArrayGet* instruction) {
     CHECK(!index.IsFpuRegisterPair());
   }
   codegen_->GenerateStubCheckAndSwapCode(obj, registersToMaybeSave, locations);
+  codegen_->GenerateIncrReadCounter(obj);
 
   MacroAssembler* masm = GetVIXLAssembler();
   UseScratchRegisterScope temps(masm);
@@ -2155,6 +2156,7 @@ void InstructionCodeGeneratorARM64::VisitArrayLength(HArrayLength* instruction) 
   codegen_->GenerateStubCheckAndSwapCode(InputRegisterAt(instruction, 0),
                                          registersToMaybeSave,
                                          instruction->GetLocations());
+  codegen_->GenerateIncrReadCounter(InputRegisterAt(instruction, 0));
 
   BlockPoolsScope block_pools(GetVIXLAssembler());
   __ Ldr(OutputRegister(instruction),
@@ -2362,6 +2364,9 @@ void InstructionCodeGeneratorARM64::VisitArraySet(HArraySet* instruction) {
       __ Bind(slow_path->GetExitLabel());
     }
   }
+
+  codegen_->GenerateIncrWriteCounter(array);
+  codegen_->GenerateSetDirtyBit(array);
 }
 
 void LocationsBuilderARM64::VisitBoundsCheck(HBoundsCheck* instruction) {

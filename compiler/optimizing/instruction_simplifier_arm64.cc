@@ -31,6 +31,17 @@ void InstructionSimplifierArm64Visitor::TryExtractArrayAccessAddress(HInstructio
                                                                      HInstruction* array,
                                                                      HInstruction* index,
                                                                      int access_size) {
+  // Added by Niel: replacing the array address with an intermediate address
+  // prevents us from performing stub checks correctly. For now, we just
+  // disable substituting in an intermediate address entirely.
+  //
+  // TODO: Add this optimization back in, if it is compatible with the OS
+  // memory-reclamation mechanism, and add any required stub checks.
+  bool optimizationDisabled = true;
+  if (optimizationDisabled) {
+    return;
+  }
+
   if (kEmitCompilerReadBarrier) {
     // The read barrier instrumentation does not support the
     // HArm64IntermediateAddress instruction yet.
