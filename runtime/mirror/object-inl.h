@@ -58,7 +58,6 @@ inline Class* Object::GetClass() {
 
 template<VerifyObjectFlags kVerifyFlags>
 inline void Object::SetClass(Class* new_klass) {
-  SWAP_PREAMBLE_TEMPLATE(SetClass, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags), new_klass)
   // new_klass may be null prior to class linker initialization.
   // We don't mark the card as this occurs as part of object allocation. Not all objects have
   // backing cards, such as large objects.
@@ -250,7 +249,6 @@ inline void Object::AssertReadBarrierPointer() const {
 
 template<VerifyObjectFlags kVerifyFlags>
 inline bool Object::VerifierInstanceOf(Class* klass) {
-  SWAP_PREAMBLE_TEMPLATE(VerifierInstanceOf, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags), klass)
   DCHECK(klass != nullptr);
   DCHECK(GetClass<kVerifyFlags>() != nullptr);
   return klass->IsInterface() || InstanceOf(klass);
@@ -258,7 +256,6 @@ inline bool Object::VerifierInstanceOf(Class* klass) {
 
 template<VerifyObjectFlags kVerifyFlags>
 inline bool Object::InstanceOf(Class* klass) {
-  SWAP_PREAMBLE_TEMPLATE(InstanceOf, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags), klass)
   DCHECK(klass != nullptr);
   DCHECK(GetClass<kVerifyNone>() != nullptr);
   return klass->IsAssignableFrom(GetClass<kVerifyFlags>());
@@ -266,7 +263,6 @@ inline bool Object::InstanceOf(Class* klass) {
 
 template<VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrierOption>
 inline bool Object::IsClass() {
-  SWAP_PREAMBLE_TEMPLATE(IsClass, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption), )
   Class* java_lang_Class = GetClass<kVerifyFlags, kReadBarrierOption>()->
       template GetClass<kVerifyFlags, kReadBarrierOption>();
   return GetClass<static_cast<VerifyObjectFlags>(kVerifyFlags & ~kVerifyThis),
@@ -282,7 +278,6 @@ inline Class* Object::AsClass() {
 
 template<VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrierOption>
 inline bool Object::IsObjectArray() {
-  SWAP_PREAMBLE_TEMPLATE(IsObjectArray, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption), )
   constexpr auto kNewFlags = static_cast<VerifyObjectFlags>(kVerifyFlags & ~kVerifyThis);
   return IsArrayInstance<kVerifyFlags, kReadBarrierOption>() &&
       !GetClass<kNewFlags, kReadBarrierOption>()->
@@ -298,7 +293,6 @@ inline ObjectArray<T>* Object::AsObjectArray() {
 
 template<VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrierOption>
 inline bool Object::IsArrayInstance() {
-  SWAP_PREAMBLE_TEMPLATE(IsArrayInstance, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption), )
   return GetClass<kVerifyFlags, kReadBarrierOption>()->
       template IsArrayClass<kVerifyFlags, kReadBarrierOption>();
 }
@@ -380,7 +374,6 @@ inline ShortArray* Object::AsShortSizedArray() {
 
 template<VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrierOption>
 inline bool Object::IsIntArray() {
-  SWAP_PREAMBLE_TEMPLATE(IsIntArray, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption), )
   constexpr auto kNewFlags = static_cast<VerifyObjectFlags>(kVerifyFlags & ~kVerifyThis);
   mirror::Class* klass = GetClass<kVerifyFlags, kReadBarrierOption>();
   mirror::Class* component_type = klass->GetComponentType<kVerifyFlags, kReadBarrierOption>();
@@ -396,7 +389,6 @@ inline IntArray* Object::AsIntArray() {
 
 template<VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrierOption>
 inline bool Object::IsLongArray() {
-  SWAP_PREAMBLE_TEMPLATE(IsLongArray, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption), )
   constexpr auto kNewFlags = static_cast<VerifyObjectFlags>(kVerifyFlags & ~kVerifyThis);
   mirror::Class* klass = GetClass<kVerifyFlags, kReadBarrierOption>();
   mirror::Class* component_type = klass->GetComponentType<kVerifyFlags, kReadBarrierOption>();
@@ -412,7 +404,6 @@ inline LongArray* Object::AsLongArray() {
 
 template<VerifyObjectFlags kVerifyFlags>
 inline bool Object::IsFloatArray() {
-  SWAP_PREAMBLE_TEMPLATE(IsFloatArray, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags), )
   constexpr auto kNewFlags = static_cast<VerifyObjectFlags>(kVerifyFlags & ~kVerifyThis);
   auto* component_type = GetClass<kVerifyFlags>()->GetComponentType();
   return component_type != nullptr && component_type->template IsPrimitiveFloat<kNewFlags>();
@@ -430,7 +421,6 @@ inline FloatArray* Object::AsFloatArray() {
 
 template<VerifyObjectFlags kVerifyFlags>
 inline bool Object::IsDoubleArray() {
-  SWAP_PREAMBLE_TEMPLATE(IsDoubleArray, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags), )
   constexpr auto kNewFlags = static_cast<VerifyObjectFlags>(kVerifyFlags & ~kVerifyThis);
   auto* component_type = GetClass<kVerifyFlags>()->GetComponentType();
   return component_type != nullptr && component_type->template IsPrimitiveDouble<kNewFlags>();
