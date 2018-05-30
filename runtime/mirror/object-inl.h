@@ -15,7 +15,8 @@
  *
  * Note from Niel: SWAP_PREAMBLE macro calls were added to this file
  * automatically using the script insert-object-hooks.pl. This script is
- * currently in a different repository.
+ * in my "android-swap-code" repository in the "swap-hook-generation"
+ * folder.
  */
 
 #ifndef ART_RUNTIME_MIRROR_OBJECT_INL_H_
