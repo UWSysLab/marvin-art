@@ -3945,6 +3945,8 @@ void CodeGeneratorARM64::GenerateIncrReadCounter(Register objectReg) {
   vixl::Label doneLabel;
 
   Register temp = temps.AcquireW();
+  CHECK(temp.code() != 0);
+
   int flagsOffset = 8;
   int readCounterOffset = 10;
   int ignoreReadFlagOffset = 1; // within x_flags_ byte
@@ -3969,6 +3971,8 @@ void CodeGeneratorARM64::GenerateIncrWriteCounter(Register objectReg) {
   vixl::Label doneLabel;
 
   Register temp = temps.AcquireW();
+  CHECK(temp.code() != 0);
+
   int writeCounterOffset = 11;
 
   __ Ldrb(temp, MemOperand(objectReg, writeCounterOffset));
@@ -3983,6 +3987,9 @@ void CodeGeneratorARM64::GenerateSetDirtyBit(Register objectReg) {
   UseScratchRegisterScope temps(GetVIXLAssembler());
   Register flagsReg = temps.AcquireW();
   Register temp = temps.AcquireW();
+  CHECK(flagsReg.code() != 0);
+  CHECK(temp.code() != 0);
+
   int flagsOffset = 8;
 
   __ Add(flagsReg, objectReg, flagsOffset);
