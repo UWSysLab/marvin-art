@@ -41,7 +41,9 @@ void CheckAndUpdate(gc::collector::GarbageCollector * gc, mirror::Object * objec
     SHARED_REQUIRES(Locks::mutator_lock_);
 
 /*
- * Swap all live objects in the swap file back into memory.
+ * Swap all live objects in the swap file back into memory. Installs pointers
+ * to the objects in their stubs so that method calls can be redirected to the
+ * objects.
  */
 void SwapObjectsIn(gc::Heap * heap) REQUIRES(Locks::mutator_lock_);
 
@@ -66,18 +68,9 @@ void SemiSpaceUpdateDataStructures(Thread * self);
 
 /*
  * Swaps in an object on-demand. Installs a pointer to the object in the stub
- * so that method calls can be redirected to the object until references are
- * patched in CleanUpOnDemandSwaps().
+ * so that method calls can be redirected to the object.
  */
 void SwapInOnDemand(Stub * stub) SHARED_REQUIRES(Locks::mutator_lock_);
-
-/*
- * Cleans up state associated with objects that were swapped in on-demand by
- * patching references to point to the objects rather than the stubs, remapping
- * the swap data structures to use the object pointers instead of the stub
- * pointers, and freeing the stubs.
- */
-void CleanUpOnDemandSwaps(gc::Heap * heap) REQUIRES(Locks::mutator_lock_);
 
 /*
  * Used by Heap::UpdateProcessState() to notify the swap code when the app

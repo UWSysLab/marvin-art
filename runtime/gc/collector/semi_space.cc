@@ -733,6 +733,13 @@ void SemiSpace::ScanObject(Object* obj) {
   DCHECK(!from_space_->HasAddress(obj)) << "Scanning object " << obj << " in from space";
   if (obj->GetStubFlag()) {
     niel::swap::Stub * stub = (niel::swap::Stub *)obj;
+
+    mirror::Object * rawObjectRef = stub->GetObjectAddress();
+    mirror::CompressedReference<mirror::Object> typedObjectRef
+        = mirror::CompressedReference<mirror::Object>::FromMirrorPtr(rawObjectRef);
+    MarkObject(&typedObjectRef);
+    stub->SetObjectAddress(typedObjectRef.AsMirrorPtr());
+
     for (int i = 0; i < stub->GetNumRefs(); i++) {
       mirror::Object * rawRef = stub->GetReference(i);
       mirror::CompressedReference<mirror::Object> typedRef

@@ -51,12 +51,13 @@ void FreeFromRosAllocSpace(Thread * self, gc::Heap * heap, mirror::Object * obj)
         SHARED_REQUIRES(Locks::mutator_lock_);
 void FreeFromLargeObjectSpace(Thread * self, gc::Heap * heap, mirror::Object * obj)
         SHARED_REQUIRES(Locks::mutator_lock_);
+void debugPrintDataStructureInfo(Thread * self, const std::string & message);
 void dumpObject(mirror::Object * obj);
 
 /*
  * Writes a snapshot of the given object to the swap file, overwriting the object's
  * previous snapshot in the swap file if one exists. Clears the object's dirty bit.
- * Grabs the swapFileMutex and swapStateMutex during execution.
+ * Grabs the swapFileMutex and swapFileMapsMutex during execution.
  */
 int writeToSwapFile(Thread * self, gc::Heap * heap, mirror::Object * object, bool * ioError)
         SHARED_REQUIRES(Locks::mutator_lock_);
@@ -70,15 +71,38 @@ mirror::Object * swapInObject(Thread * self, gc::Heap * heap, Stub * stub,
         SHARED_REQUIRES(Locks::mutator_lock_);
 
 /*
- * For each key-value pair (a,b) in addrTable, replaces any key-value pair
- * (a,c) in objectOffsetMap or objectSizeMap with the new entry (b,c).
+ * Updates swap data structures based on a mapping from "old pointers" to "new
+ * pointers" so that any old pointers in the data structures are replaced with
+ * the corresponding new pointers.
  *
- * If removeUntouched is true, this function removes all pairs (a,c) from
- * objectOffsetMap and objectSizeMap that did not have a corresponding pair
- * (a,b) in addrTable.
+ * More precisely, for each key-value pair (a,b) in addrTable, this function:
+ *
+ * 1) Replaces any key-value pair (a,c) in objectOffsetMap or objectSizeMap
+ * with the new entry (b,c).
+ *
+ * 2) Replaces any key-value pair (a,c) in objectStubMap with the new entry
+ * (b,c), and replaces any key-value pair (d,a) with the new entry (d,b).
+ * (If there are two key-value pairs (a,b) and (e,f) in addrTable and a
+ * key-value pair (a,e) in objectStubMap, this function replaces it with the
+ * single new key-value pair (b,f).)
+ *
+ * If removeUntouchedRosAlloc is true, this function removes all entries in the
+ * data structures corresponding to pointers that are not in the given mapping
+ * and not in the large object space. The purpose of this parameter is to allow
+ * this function to clean up entries corresponding to objects freed by the
+ * SemiSpace garbage collector.
+ *
+ * More precisely, given that object a is not in the large object space, this
+ * function:
+ *
+ * 1) Removes all pairs (a,c) from objectOffsetMap and objectSizeMap that did
+ * not have a corresponding pair (a,b) in addrTable.
+ *
+ * 2) Removes all pairs (a,c) from objectStubMap that did not have a
+ * corresponding pair (a,b) in addrTable.
  */
 void replaceDataStructurePointers(Thread * self, const std::map<void *, void *> & addrTable,
-                                  bool removeUntouched);
+                                  bool removeUntouchedRosAlloc);
 
 /*
  * Copies a file. Returns true on success and false on error. The caller is
@@ -113,8 +137,8 @@ bool shouldExcludeObjectAndMembers(mirror::Object * obj) SHARED_REQUIRES(Locks::
 
 /* Variables */
 Mutex writeQueueMutex("WriteQueueMutex", kLoggingLock);
-Mutex swappedInSetMutex("SwappedInSetMutex", kLoggingLock);
-ReaderWriterMutex swapStateMutex("SwapStateMutex", kDefaultMutexLevel);
+ReaderWriterMutex objectStubMapMutex("ObjectStubMapMutex", kLoggingLock);
+ReaderWriterMutex swapFileMapsMutex("SwapFileMapsMutex", kDefaultMutexLevel);
 // Holding the swapFileMutex while reading the swap file always guarantees that
 // reads return valid data, and it guarantees that reads reflect the latest
 // writes iff the WriteTask always runs on the same thread as swap file
@@ -146,7 +170,12 @@ bool swapEnabled = false;
 // Locked by swapFileMutex
 std::fstream swapfile;
 
-// Locked by swapStateMutex
+// Locked by swapFileMapsMutex
+//
+// These maps describe the position and size of checkpointed objects in the
+// swap file. If a stub has been created for an object, the key associated with
+// the object's information is the stub pointer. If no stub has been created
+// yet, the key is a pointer to the object itself.
 std::map<void *, std::streampos> objectOffsetMap;
 std::map<void *, size_t> objectSizeMap;
 
@@ -154,9 +183,11 @@ std::map<void *, size_t> objectSizeMap;
 std::vector<mirror::Object *> writeQueue;
 std::set<mirror::Object *> writeSet; // prevents duplicate entries in writeQueue
 
-// Locked by swappedInSetMutex
-std::set<Stub *> swappedInSet;
-std::map<mirror::Object *, Stub *> swappedInMap; // maps objects swapped in on-demand to their stubs
+// Locked by objectStubMapMutex
+//
+// The objectStubMap maps every memory-resident "swap candidate" object that
+// has a stub to its stub.
+std::map<mirror::Object *, Stub *> objectStubMap;
 
 class WriteTask : public gc::HeapTask {
   public:
@@ -308,32 +339,32 @@ int writeToSwapFile(Thread * self, gc::Heap * heap, mirror::Object * object, boo
         std::memcpy(objectData, object, objectSize);
 
         /*
-         * The code below is a bit convoluted because an object that was
-         * swapped in on-demand will be represented in the objectOffsetMap (and
-         * objectSizeMap) by its stub's address. As a result, we need to first
-         * check if the object itself is in the objectOffsetMap, and then check
-         * if it was swapped in on-demand and has a stub in the
-         * objectOffsetMap.
+         * The code below is a bit convoluted because an object that has a stub
+         * will be represented in the objectOffsetMap (and objectSizeMap) by
+         * its stub's address. As a result, we need to first check if the
+         * object itself is in the objectOffsetMap, and then check if it has a
+         * stub (the stub is guaranteed to be a key in the
+         * objectOffsetMap/objectSizeMap).
          */
-        bool objectInMaps = false;
+        bool objectInSwapFileMaps = false;
         Stub * stub = nullptr;
 
-        swapStateMutex.SharedLock(self);
-        objectInMaps = (objectOffsetMap.find(object) != objectOffsetMap.end());
-        swapStateMutex.SharedUnlock(self);
+        swapFileMapsMutex.SharedLock(self);
+        objectInSwapFileMaps = (objectOffsetMap.find(object) != objectOffsetMap.end());
+        swapFileMapsMutex.SharedUnlock(self);
 
-        if (!objectInMaps) {
-            swappedInSetMutex.ExclusiveLock(self);
-            if (swappedInMap.find(object) != swappedInMap.end()) {
-                stub = swappedInMap[object];
+        if (!objectInSwapFileMaps) {
+            objectStubMapMutex.SharedLock(self);
+            if (objectStubMap.find(object) != objectStubMap.end()) {
+                stub = objectStubMap[object];
             }
-            swappedInSetMutex.ExclusiveUnlock(self);
+            objectStubMapMutex.SharedUnlock(self);
         }
 
         void * swapStateKey = nullptr;
         bool inSwapFile = false;
 
-        if (objectInMaps) {
+        if (objectInSwapFileMaps) {
             swapStateKey = object;
             inSwapFile = true;
         }
@@ -357,19 +388,19 @@ int writeToSwapFile(Thread * self, gc::Heap * heap, mirror::Object * object, boo
             }
             swapFileMutex.ExclusiveUnlock(self);
 
-            swapStateMutex.ExclusiveLock(self);
+            swapFileMapsMutex.ExclusiveLock(self);
             objectOffsetMap[swapStateKey] = offset;
             objectSizeMap[swapStateKey] = objectSize;
-            swapStateMutex.ExclusiveUnlock(self);
+            swapFileMapsMutex.ExclusiveUnlock(self);
 
             swapfileObjects++;
             swapfileSize += objectSize;
         }
         else {
-            swapStateMutex.SharedLock(self);
+            swapFileMapsMutex.SharedLock(self);
             std::streampos offset = objectOffsetMap[swapStateKey];
             size_t size = objectSizeMap[swapStateKey];
-            swapStateMutex.SharedUnlock(self);
+            swapFileMapsMutex.SharedUnlock(self);
 
             if (size != objectSize) {
                 result = SWAPFILE_WRITE_RESIZED;
@@ -531,13 +562,18 @@ void patchStubReferences(Thread * self, gc::Heap * heap) {
 //TODO: figure out whether it's better to grab the lock once or keep grabbing
 //      and releasing
 void replaceDataStructurePointers(Thread * self, const std::map<void *, void *> & addrTable,
-                                  bool removeUntouched) {
-    swapStateMutex.ExclusiveLock(self);
+                                  bool removeUntouchedRosAlloc) {
+    swapFileMapsMutex.ExclusiveLock(self);
 
-    std::set<void *> removeSet;
+    std::set<void *> swapFileMapsRemoveSet;
     for (auto it = objectOffsetMap.begin(); it != objectOffsetMap.end(); it++) {
         if (!addrTable.count(it->first)) {
-            removeSet.insert(it->first);
+            // Assumes that a pointer not in the large object space was in the
+            // old RosAlloc space.
+            if (!getHeapChecked()->GetLargeObjectsSpace()
+                                 ->Contains((mirror::Object *)it->first)) {
+              swapFileMapsRemoveSet.insert(it->first);
+            }
         }
     }
 
@@ -545,26 +581,61 @@ void replaceDataStructurePointers(Thread * self, const std::map<void *, void *> 
         void * originalPtr = it->first;
         void * newPtr = it->second;
 
-        CHECK_NE(objectOffsetMap.count(originalPtr), 0u);
-        CHECK_NE(objectSizeMap.count(originalPtr), 0u);
+        CHECK_EQ(objectOffsetMap.count(originalPtr), objectSizeMap.count(originalPtr));
 
-        auto oomIt = objectOffsetMap.find(originalPtr);
-        objectOffsetMap[newPtr] = oomIt->second;
-        objectOffsetMap.erase(oomIt);
+        if (objectOffsetMap.count(originalPtr)) {
+            auto oomIt = objectOffsetMap.find(originalPtr);
+            objectOffsetMap[newPtr] = oomIt->second;
+            objectOffsetMap.erase(oomIt);
 
-        auto osmIt = objectSizeMap.find(originalPtr);
-        objectSizeMap[newPtr] = osmIt->second;
-        objectSizeMap.erase(osmIt);
+            auto osmIt = objectSizeMap.find(originalPtr);
+            objectSizeMap[newPtr] = osmIt->second;
+            objectSizeMap.erase(osmIt);
+        }
     }
 
-    if (removeUntouched) {
-        for (auto it = removeSet.begin(); it != removeSet.end(); it++) {
+    if (removeUntouchedRosAlloc) {
+        for (auto it = swapFileMapsRemoveSet.begin(); it != swapFileMapsRemoveSet.end(); it++) {
             objectOffsetMap.erase(*it);
             objectSizeMap.erase(*it);
         }
     }
 
-    swapStateMutex.ExclusiveUnlock(self);
+    swapFileMapsMutex.ExclusiveUnlock(self);
+
+    objectStubMapMutex.ExclusiveLock(self);
+    std::map<mirror::Object *, Stub *> newObjectStubMap;
+    int debugCounter = 0;
+    for (auto it = objectStubMap.begin(); it != objectStubMap.end(); it++) {
+        mirror::Object * oldKey = it->first;
+        Stub * oldVal = it->second;
+        mirror::Object * newKey = nullptr;
+        Stub * newVal = nullptr;
+        if (addrTable.count(oldKey)) {
+            newKey = (mirror::Object *)addrTable.at(oldKey);
+        }
+        else {
+            newKey = oldKey;
+        }
+        if (addrTable.count(oldVal)) {
+            newVal = (Stub *)addrTable.at(oldVal);
+        }
+        else {
+            newVal = oldVal;
+        }
+        // As above, assumes that a pointer that is not in the large object
+        // space was in the old RosAlloc space
+        bool shouldRemove = (   !addrTable.count(oldKey)
+                             && !getHeapChecked()->GetLargeObjectsSpace()->Contains(oldKey));
+        if (!removeUntouchedRosAlloc || !shouldRemove) {
+          newObjectStubMap[newKey] = newVal;
+        }
+        else {
+          debugCounter++;
+        }
+    }
+    objectStubMap = newObjectStubMap;
+    objectStubMapMutex.ExclusiveUnlock(self);
 }
 
 void FreeFromRosAllocSpace(Thread * self, gc::Heap * heap, mirror::Object * obj) {
@@ -581,6 +652,8 @@ void SwapObjectsOut(Thread * self, gc::Heap * heap) {
     if (!swapEnabled) {
         return;
     }
+
+    CHECK(remappingTable.size() == 0);
 
     // Remove any object from swapOutSet whose NoSwapFlag was set since it was
     // added (currently, this only happens because the object was marked for
@@ -617,36 +690,52 @@ void SwapObjectsOut(Thread * self, gc::Heap * heap) {
         CHECK(   heap->GetRosAllocSpace()->Contains(obj)
               || heap->GetLargeObjectsSpace()->Contains(obj));
 
-        swapStateMutex.SharedLock(self);
-        CHECK(objectOffsetMap.count(obj) && objectSizeMap.count(obj));
-        swapStateMutex.SharedUnlock(self);
+        Stub * stub = nullptr;
+        objectStubMapMutex.ExclusiveLock(self);
+        if (objectStubMap.count(obj)) {
+            stub = objectStubMap[obj];
+            objectStubMap.erase(obj);
+        }
+        objectStubMapMutex.ExclusiveUnlock(self);
 
-        size_t stubSize = Stub::GetStubSize(obj);
-        size_t bytes_allocated;
-        size_t usable_size;
-        size_t bytes_tl_bulk_allocated;
-        mirror::Object * stubData = heap->GetRosAllocSpace()
-                                         ->Alloc(self,
-                                                 stubSize,
-                                                 &bytes_allocated,
-                                                 &usable_size,
-                                                 &bytes_tl_bulk_allocated);
-        CHECK(stubData != nullptr);
+        // Only allocate a new stub for this object if the object does not
+        // already have a stub.
+        if (stub != nullptr) {
+            //TODO: remove the line below after adding stub updates
+            stub->PopulateFrom(obj);
+            //TODO: remove the line below after implementing stub restoration in compiled code
+            remappingTable[obj] = stub;
+        }
+        else {
+            size_t stubSize = Stub::GetStubSize(obj);
+            size_t bytes_allocated;
+            size_t usable_size;
+            size_t bytes_tl_bulk_allocated;
+            mirror::Object * stubData = heap->GetRosAllocSpace()
+                                             ->Alloc(self,
+                                                     stubSize,
+                                                     &bytes_allocated,
+                                                     &usable_size,
+                                                     &bytes_tl_bulk_allocated);
+            CHECK(stubData != nullptr);
+            stub = (Stub *)stubData;
+            stub->PopulateFrom(obj);
 
-        Stub * stub = (Stub *)stubData;
-        stub->PopulateFrom(obj);
+            if (heap->GetLargeObjectsSpace()->Contains(obj)) {
+                stub->SetLargeObjectFlag();
+            }
+
+            remappingTable[obj] = stub;
+        }
 
         stub->SetObjectAddress(nullptr);
 
         if (heap->GetLargeObjectsSpace()->Contains(obj)) {
-            stub->SetLargeObjectFlag();
             FreeFromLargeObjectSpace(self, heap, obj);
         }
         else {
             FreeFromRosAllocSpace(self, heap, obj);
         }
-
-        remappingTable[obj] = stub;
     }
 
     patchStubReferences(self, heap);
@@ -667,11 +756,17 @@ void RecordForwardedObject(Thread * self, mirror::Object * obj, mirror::Object *
         return;
     }
 
-    swapStateMutex.SharedLock(self);
+    swapFileMapsMutex.SharedLock(self);
     if (objectOffsetMap.count(obj)) {
         semiSpaceRemappingTable[obj] = forwardAddress;
     }
-    swapStateMutex.SharedUnlock(self);
+    swapFileMapsMutex.SharedUnlock(self);
+
+    objectStubMapMutex.SharedLock(self);
+    if (objectStubMap.count(obj)) {
+      semiSpaceRemappingTable[obj] = forwardAddress;
+    }
+    objectStubMapMutex.SharedUnlock(self);
 }
 
 void SemiSpaceUpdateDataStructures(Thread * self) {
@@ -680,16 +775,11 @@ void SemiSpaceUpdateDataStructures(Thread * self) {
     }
 
     /*
-     * We call replaceDataStructurePointers() with removeUntouched set to true
-     * because we assume that if an object/stub is present in the
-     * objectOffsetMap but missing from the semiSpaceRemappingTable, it is
-     * missing because it was freed by the SemiSpace GC.
-     *
-     * A bug would appear if it were possible for a non-moving object, such as
-     * a large object space object, to be in the objectOffsetMap when this
-     * function is called. In our current implementation, any LOS object would
-     * have been swapped out to disk and replaced by a stub before this
-     * function is called, so this situation should never happen.
+     * We call replaceDataStructurePointers() with removeUntouchedRosAlloc set
+     * to true because we assume that if an object/stub in the old RosAlloc
+     * space is present in the objectOffsetMap/objectSizeMap or objectStubMap
+     * but missing from the semiSpaceRemappingTable, it is missing because it
+     * was freed by the SemiSpace GC.
      */
     replaceDataStructurePointers(self, semiSpaceRemappingTable, true);
     semiSpaceRemappingTable.clear();
@@ -739,6 +829,11 @@ mirror::Object * swapInObject(Thread * self, gc::Heap * heap, Stub * stub,
     stub->CopyRefsInto(newObj);
     stub->SetObjectAddress(newObj);
 
+    objectStubMapMutex.ExclusiveLock(self);
+    CHECK_EQ(objectStubMap.count(newObj), 0u);
+    objectStubMap[newObj] = stub;
+    objectStubMapMutex.ExclusiveUnlock(self);
+
     return newObj;
 }
 
@@ -752,42 +847,12 @@ void SwapInOnDemand(Stub * stub) {
 
     Thread * self = Thread::Current();
 
-    swapStateMutex.SharedLock(self);
+    swapFileMapsMutex.SharedLock(self);
     std::streampos objOffset = objectOffsetMap[stub];
     size_t objSize = objectSizeMap[stub];
-    swapStateMutex.SharedUnlock(self);
+    swapFileMapsMutex.SharedUnlock(self);
 
-    mirror::Object * obj = swapInObject(self, heap, stub, objOffset, objSize);
-
-    swappedInSetMutex.ExclusiveLock(self);
-    swappedInSet.insert(stub);
-    swappedInMap[obj] = stub;
-    swappedInSetMutex.ExclusiveUnlock(self);
-}
-
-void CleanUpOnDemandSwaps(gc::Heap * heap) REQUIRES(Locks::mutator_lock_) {
-    if (!swapEnabled) {
-        return;
-    }
-
-    doingSwapInCleanup = true;
-    Thread * self = Thread::Current();
-
-    swappedInSetMutex.ExclusiveLock(self);
-    for (auto it = swappedInSet.begin(); it != swappedInSet.end(); it++) {
-        Stub * stub = *it;
-        CHECK(heap->GetRosAllocSpace()->Contains((mirror::Object *)stub));
-
-        remappingTable[stub] = stub->GetObjectAddress();
-        FreeFromRosAllocSpace(self, heap, (mirror::Object *)stub);
-    }
-    swappedInSet.clear();
-    swappedInMap.clear();
-    swappedInSetMutex.ExclusiveUnlock(self);
-
-    patchStubReferences(self, heap);
-    remappingTable.clear();
-    doingSwapInCleanup = false;
+    swapInObject(self, heap, stub, objOffset, objSize);
 }
 
 void SwapObjectsIn(gc::Heap * heap) {
@@ -796,11 +861,10 @@ void SwapObjectsIn(gc::Heap * heap) {
     }
 
     ScopedTimer timer("swapping objects back in");
-    CHECK_EQ(remappingTable.size(), 0u);
 
-    doingSwapInCleanup = true;
     Thread * self = Thread::Current();
-    swapStateMutex.SharedLock(self);
+
+    swapFileMapsMutex.SharedLock(self);
     for (auto it = objectOffsetMap.begin(); it != objectOffsetMap.end(); it++) {
         mirror::Object * obj = (mirror::Object *)it->first;
         if (obj->GetStubFlag()) {
@@ -815,23 +879,9 @@ void SwapObjectsIn(gc::Heap * heap) {
             if (swappedInObj == nullptr) {
                 swappedInObj = swapInObject(self, heap, stub, objOffset, objSize);
             }
-            FreeFromRosAllocSpace(self, heap, obj);
-            remappingTable[stub] = swappedInObj;
         }
     }
-    swapStateMutex.SharedUnlock(self);
-
-    // If any objects were swapped in on-demand in the background, we're
-    // cleaning them up in this function, so we need to delete their stubs from
-    // the swappedInSet and swappedInMap
-    swappedInSetMutex.ExclusiveLock(self);
-    swappedInSet.clear();
-    swappedInMap.clear();
-    swappedInSetMutex.ExclusiveUnlock(self);
-
-    patchStubReferences(self, heap);
-    remappingTable.clear();
-    doingSwapInCleanup = false;
+    swapFileMapsMutex.SharedUnlock(self);
 }
 
 gc::TaskProcessor * getTaskProcessorChecked() {
@@ -853,10 +903,9 @@ void GcRecordFree(Thread * self, mirror::Object * object) {
      *    RosAlloc space and large object space.
      * 2) The garbage collectors never run concurrently with any swapping
      *    methods that free objects or stubs as part of swapping (currently,
-     *    these methods are SwapObjectsOut(), SwapObjectsIn(), and
-     *    CleanUpOnDemandSwaps()).
+     *    the only such method is SwapObjectsOut()).
      */
-    if (swappingOutObjects || doingSwapInCleanup) {
+    if (swappingOutObjects) {
         return;
     }
 
@@ -868,7 +917,7 @@ void GcRecordFree(Thread * self, mirror::Object * object) {
     }
     writeQueueMutex.ExclusiveUnlock(self);
 
-    swapStateMutex.ExclusiveLock(self);
+    swapFileMapsMutex.ExclusiveLock(self);
     if (objectOffsetMap.count(object) && objectSizeMap.count(object)) {
         freedObjects++;
         freedSize += objectSizeMap[object];
@@ -878,11 +927,17 @@ void GcRecordFree(Thread * self, mirror::Object * object) {
     else if (objectOffsetMap.count(object) || objectSizeMap.count(object)) {
         LOG(ERROR) << "NIELERROR: object in one of the object maps but not the other";
     }
-    swapStateMutex.ExclusiveUnlock(self);
+    swapFileMapsMutex.ExclusiveUnlock(self);
 
     if (swapOutSet.count(object)) {
         swapOutSet.erase(object);
     }
+
+    objectStubMapMutex.ExclusiveLock(self);
+    if (objectStubMap.count(object)) {
+        objectStubMap.erase(object);
+    }
+    objectStubMapMutex.ExclusiveUnlock(self);
 }
 
 void InitIfNecessary(Thread * self) {
@@ -903,10 +958,10 @@ void InitIfNecessary(Thread * self) {
 
     pid = curPid;
 
-    swapStateMutex.ExclusiveLock(self);
+    swapFileMapsMutex.ExclusiveLock(self);
     objectOffsetMap.clear();
     objectSizeMap.clear();
-    swapStateMutex.ExclusiveUnlock(self);
+    swapFileMapsMutex.ExclusiveUnlock(self);
 
     writeQueueMutex.ExclusiveLock(self);
     writeQueue.clear();
@@ -1020,7 +1075,7 @@ void CompactSwapFile(Thread * self) {
     }
 
     std::map<void *, std::streampos> newObjectOffsetMap;
-    swapStateMutex.SharedLock(self);
+    swapFileMapsMutex.SharedLock(self);
     for (auto it = objectOffsetMap.begin(); it != objectOffsetMap.end(); it++) {
         if (ioError == true) {
             break;
@@ -1049,12 +1104,12 @@ void CompactSwapFile(Thread * self) {
             ioError = true;
         }
     }
-    swapStateMutex.SharedUnlock(self);
+    swapFileMapsMutex.SharedUnlock(self);
 
     oldSwapfile.close();
     newSwapfile.close();
 
-    swapStateMutex.ExclusiveLock(self);
+    swapFileMapsMutex.ExclusiveLock(self);
     objectOffsetMap = newObjectOffsetMap;
     swapFileMutex.ExclusiveLock(self);
     swapfile.close();
@@ -1065,7 +1120,7 @@ void CompactSwapFile(Thread * self) {
         ioError = true;
     }
     swapFileMutex.ExclusiveUnlock(self);
-    swapStateMutex.ExclusiveUnlock(self);
+    swapFileMapsMutex.ExclusiveUnlock(self);
 
     if (ioError) {
         LOG(INFO) << "NIEL detected errors while compacting swap file";
@@ -1157,7 +1212,7 @@ void validateSwapFile(Thread * self) {
     LOG(INFO) << "NIEL starting swap file validation";
 
     swapFileMutex.ExclusiveLock(self);
-    swapStateMutex.SharedLock(self);
+    swapFileMapsMutex.SharedLock(self);
 
     if (objectOffsetMap.size() != objectSizeMap.size()) {
         LOG(ERROR) << "NIELERROR: objectOffsetMap and objectSizeMap sizes differ";
@@ -1207,7 +1262,7 @@ void validateSwapFile(Thread * self) {
         error = true;
     }
 
-    swapStateMutex.SharedUnlock(self);
+    swapFileMapsMutex.SharedUnlock(self);
     swapFileMutex.ExclusiveUnlock(self);
 
     if (error) {
@@ -1216,6 +1271,29 @@ void validateSwapFile(Thread * self) {
     else {
         LOG(INFO) << "NIEL swap file validation successful";
     }
+}
+
+void debugPrintDataStructureInfo(Thread * self, const std::string & message) {
+  int objectOffsetMapStubCount = 0;
+  int objectOffsetMapTotalCount = 0;
+  int objectStubMapCount = 0;
+  swapFileMapsMutex.SharedLock(self);
+  for (auto it = objectOffsetMap.begin(); it != objectOffsetMap.end(); it++) {
+    mirror::Object * obj = (mirror::Object *)it->first;
+    if (obj->GetStubFlag()) {
+      objectOffsetMapStubCount++;
+    }
+  }
+  objectOffsetMapTotalCount = objectOffsetMap.size();
+  swapFileMapsMutex.SharedUnlock(self);
+
+  objectStubMapMutex.SharedLock(self);
+  objectStubMapCount = objectStubMap.size();
+  objectStubMapMutex.SharedUnlock(self);
+
+  LOG(INFO) << "NIEL (" << message << ") objectOffsetMap contains "
+            << objectOffsetMapTotalCount << " total objects, " << objectOffsetMapStubCount
+            << " stubs; objectStubMap contains " << objectStubMapCount << " object-stub pairs";
 }
 
 class DumpObjectVisitor {
