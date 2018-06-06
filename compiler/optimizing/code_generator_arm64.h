@@ -589,6 +589,8 @@ class CodeGeneratorARM64 : public CodeGenerator {
                                     const std::vector<vixl::CPURegister> & registersToMaybeSave,
                                     LocationSummary * locations);
 
+  void GenerateRestoreStub(vixl::Register objectReg);
+
   // Generate code to check the IgnoreReadFlag of an object, and if it is not
   // set, increment the read counter byte in the object header.
   void GenerateIncrReadCounter(vixl::Register objectReg);

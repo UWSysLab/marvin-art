@@ -30,7 +30,6 @@ namespace niel {
 namespace swap {
 
 /* Constants */
-const int MAGIC_NUM = 42424242;
 const double COMPACT_THRESHOLD = 0.25;
 const int BG_MARK_SWEEPS_BEFORE_SEMI_SPACE = 4;
 const uint64_t WRITE_TASK_FG_MAX_DURATION = 300000000; // ns
@@ -315,16 +314,11 @@ int writeToSwapFile(Thread * self, gc::Heap * heap, mirror::Object * object, boo
     bool validObject = false;
     if (object != nullptr) {
         object->SetIgnoreReadFlag();
-        if (object->GetPadding() == MAGIC_NUM) {
-            if (object->GetClass() != nullptr) {
-                validObject = true;
-            }
-            else {
-                result = SWAPFILE_WRITE_NULL_CLASS;
-            }
+        if (object->GetClass() != nullptr) {
+            validObject = true;
         }
         else {
-            result = SWAPFILE_WRITE_GARBAGE;
+            result = SWAPFILE_WRITE_NULL_CLASS;
         }
         object->ClearIgnoreReadFlag();
     }
@@ -673,7 +667,6 @@ void SwapObjectsOut(Thread * self, gc::Heap * heap) {
     for (auto it = swapOutSet.begin(); it != swapOutSet.end(); it++) {
         mirror::Object * obj = *it;
         if (obj->GetDirtyBit()) {
-            obj->SetPadding(MAGIC_NUM);
             bool ioError = false;
             int writeResult = writeToSwapFile(self, heap, obj, &ioError);
             if (ioError || writeResult != SWAPFILE_WRITE_OK) {
@@ -823,7 +816,6 @@ mirror::Object * swapInObject(Thread * self, gc::Heap * heap, Stub * stub,
     swapfile.seekg(curPos);
     swapFileMutex.ExclusiveUnlock(self);
 
-    CHECK(newObj->GetPadding() == MAGIC_NUM);
     CHECK(newObj->GetDirtyBit() == 0);
 
     stub->CopyRefsInto(newObj);
@@ -1189,7 +1181,6 @@ void CheckAndUpdate(gc::collector::GarbageCollector * gc, mirror::Object * objec
             if (!writeSet.count(object)) {
                 writeSet.insert(object);
                 writeQueue.push_back(object);
-                object->SetPadding(MAGIC_NUM);
             }
             writeQueueMutex.ExclusiveUnlock(self);
         }
@@ -1247,12 +1238,6 @@ void validateSwapFile(Thread * self) {
 
         if (objectSize < 16) {
             LOG(ERROR) << "NIELERROR: object size " << objectSize << " is too small";
-            error = true;
-        }
-
-        int * padding = (int *)&objectData[12];
-        if (*padding != MAGIC_NUM) {
-            LOG(ERROR) << "NIELERROR: object padding does not match magic num";
             error = true;
         }
     }

@@ -1675,6 +1675,10 @@ void InstructionCodeGeneratorARM64::HandleFieldGet(HInstruction* instruction,
       codegen_->MaybeGenerateReadBarrierSlow(instruction, out, out, base_loc, offset);
     }
   }
+
+  if (InputRegisterAt(instruction, 0).code() != OutputCPURegister(instruction).code()) {
+    codegen_->GenerateRestoreStub(InputRegisterAt(instruction, 0));
+  }
 }
 
 void LocationsBuilderARM64::HandleFieldSet(HInstruction* instruction) {
@@ -1727,6 +1731,12 @@ void InstructionCodeGeneratorARM64::HandleFieldSet(HInstruction* instruction,
       codegen_->Store(field_type, source, HeapOperand(obj, offset));
       codegen_->MaybeRecordImplicitNullCheck(instruction);
     }
+
+    // Added by Niel: need to release temp register to make space for the two
+    // temp registers required by GenerateSetDirtyBit()
+    if (kPoisonHeapReferences && field_type == Primitive::kPrimNot) {
+      temps.Release(source);
+    }
   }
 
   if (CodeGenerator::StoreNeedsWriteBarrier(field_type, instruction->InputAt(1))) {
@@ -1735,6 +1745,7 @@ void InstructionCodeGeneratorARM64::HandleFieldSet(HInstruction* instruction,
 
   codegen_->GenerateIncrWriteCounter(obj);
   codegen_->GenerateSetDirtyBit(obj);
+  codegen_->GenerateRestoreStub(obj);
 }
 
 void InstructionCodeGeneratorARM64::HandleBinaryOp(HBinaryOperation* instr) {
@@ -2142,6 +2153,10 @@ void InstructionCodeGeneratorARM64::VisitArrayGet(HArrayGet* instruction) {
       }
     }
   }
+
+  if (!(out.IsRegister() && out.reg() == helpers::ARTRegCodeFromVIXL(obj.code()))) {
+    codegen_->GenerateRestoreStub(obj);
+  }
 }
 
 void LocationsBuilderARM64::VisitArrayLength(HArrayLength* instruction) {
@@ -2162,6 +2177,10 @@ void InstructionCodeGeneratorARM64::VisitArrayLength(HArrayLength* instruction) 
   __ Ldr(OutputRegister(instruction),
          HeapOperand(InputRegisterAt(instruction, 0), mirror::Array::LengthOffset()));
   codegen_->MaybeRecordImplicitNullCheck(instruction);
+
+  if (InputRegisterAt(instruction, 0).code() != OutputRegister(instruction).code()) {
+    codegen_->GenerateRestoreStub(InputRegisterAt(instruction, 0));
+  }
 }
 
 void LocationsBuilderARM64::VisitArraySet(HArraySet* instruction) {
@@ -2367,6 +2386,7 @@ void InstructionCodeGeneratorARM64::VisitArraySet(HArraySet* instruction) {
 
   codegen_->GenerateIncrWriteCounter(array);
   codegen_->GenerateSetDirtyBit(array);
+  codegen_->GenerateRestoreStub(array);
 }
 
 void LocationsBuilderARM64::VisitBoundsCheck(HBoundsCheck* instruction) {
@@ -3328,6 +3348,10 @@ void InstructionCodeGeneratorARM64::VisitInstanceOf(HInstanceOf* instruction) {
     }
   }
 
+  if (obj.code() != out.code()) {
+    codegen_->GenerateRestoreStub(obj);
+  }
+
   if (zero.IsLinked()) {
     __ Bind(&zero);
     __ Mov(out, 0);
@@ -3538,6 +3562,7 @@ void InstructionCodeGeneratorARM64::VisitCheckCast(HCheckCast* instruction) {
       __ B(type_check_slow_path->GetEntryLabel());
       break;
   }
+  codegen_->GenerateRestoreStub(obj);
   __ Bind(&done);
 
   __ Bind(type_check_slow_path->GetExitLabel());
@@ -3629,6 +3654,8 @@ void InstructionCodeGeneratorARM64::VisitInvokeInterface(HInvokeInterface* invok
   __ Ldr(temp, MemOperand(temp, method_offset));
   // lr = temp->GetEntryPoint();
   __ Ldr(lr, MemOperand(temp, entry_point.Int32Value()));
+  // Added by Niel: put stub back into object register before branching
+  codegen_->GenerateRestoreStub(XRegisterFrom(receiver));
   // lr();
   __ Blr(lr);
   DCHECK(!codegen_->IsLeafMethod());
@@ -3934,10 +3961,41 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
 
   __ Bind(&swapDoneLabel);
 
-  // Replace stub pointer with pointer to swapped-in object
-  Load(Primitive::kPrimInt, Register(objectReg.code(), kWRegSize), objectAddrOperand);
+  // Store stub address in the object header so that GenerateRestoreStub() can
+  // restore it later.
+  //
+  // Note: this code might be confusing because the register named objectReg
+  // actually contains the stub address right now, and the register named temp
+  // will hold the address of the corresponding real object.
+  Load(Primitive::kPrimInt, temp, objectAddrOperand); // temp now holds object_address_
+  Offset stubAddrOffset(12);
+  MemOperand stubAddrOperand = HeapOperandFrom(LocationFrom(temp), stubAddrOffset);
+  Store(Primitive::kPrimInt, objectReg.W(), stubAddrOperand);
+
+  // Replace stub pointer in register with pointer to swapped-in object
+  __ Mov(objectReg, temp);
 
   __ Bind(&stubCheckDoneLabel);
+}
+
+void CodeGeneratorARM64::GenerateRestoreStub(Register objectReg) {
+  UseScratchRegisterScope temps(GetVIXLAssembler());
+  vixl::Label doneLabel;
+
+  Register temp = temps.AcquireW();
+  CHECK(temp.code() != 0);
+
+  // Note: unlike in the GenerateStubCheckAndSwapCode() code above, in this
+  // method, the register named objectReg is now holding a real object, and
+  // the register named temp will hold the stub address.
+  Offset stubAddrOffset(12);
+  MemOperand stubAddrOperand = HeapOperandFrom(LocationFrom(objectReg), stubAddrOffset);
+  Load(Primitive::kPrimInt, temp, stubAddrOperand);
+  __ Cbz(temp, &doneLabel);
+  __ Mov(objectReg, temp);
+  Register zeroReg(kZeroRegCode, 32);
+  Store(Primitive::kPrimInt, zeroReg, stubAddrOperand);
+  __ Bind(&doneLabel);
 }
 
 void CodeGeneratorARM64::GenerateIncrReadCounter(Register objectReg) {
@@ -4033,6 +4091,8 @@ void CodeGeneratorARM64::GenerateVirtualCall(HInvokeVirtual* invoke, Location te
   __ Ldr(temp, MemOperand(temp, method_offset));
   // lr = temp->GetEntryPoint();
   __ Ldr(lr, MemOperand(temp, entry_point.SizeValue()));
+  // Added by Niel: put stub back into object register before branching
+  GenerateRestoreStub(receiver);
   // lr();
   __ Blr(lr);
 }
