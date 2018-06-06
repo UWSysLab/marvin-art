@@ -20,8 +20,6 @@
 #include "mirror/object-inl.h"
 #include "scoped_fast_native_object_access.h"
 
-#include "niel_stub.h"
-#include "niel_swap.h"
 
 namespace art {
 
@@ -55,38 +53,12 @@ static void Object_waitJI(JNIEnv* env, jobject java_this, jlong ms, jint ns) {
   o->Wait(soa.Self(), ms, ns);
 }
 
-static jboolean Object_equalsWithStubCheck(JNIEnv* env, jobject java_this, jobject java_obj) {
-  ScopedFastNativeObjectAccess soa(env);
-  mirror::Object* thiz = soa.Decode<mirror::Object*>(java_this);
-  mirror::Object* real_this = thiz;
-  mirror::Object* obj = soa.Decode<mirror::Object*>(java_obj);
-  mirror::Object* real_obj = obj;
-  if (thiz != nullptr && thiz->GetStubFlag()) {
-    niel::swap::Stub * stub_this = (niel::swap::Stub *)thiz;
-    real_this = stub_this->GetObjectAddress();
-    if (real_this == nullptr) {
-      niel::swap::SwapInOnDemand(stub_this);
-      real_this = stub_this->GetObjectAddress();
-    }
-  }
-  if (obj != nullptr && obj->GetStubFlag()) {
-    niel::swap::Stub * stub_obj = (niel::swap::Stub *)obj;
-    real_obj = stub_obj->GetObjectAddress();
-    if (real_obj == nullptr) {
-      niel::swap::SwapInOnDemand(stub_obj);
-      real_obj = stub_obj->GetObjectAddress();
-    }
-  }
-  return (real_this == real_obj);
-}
-
 static JNINativeMethod gMethods[] = {
   NATIVE_METHOD(Object, internalClone, "!()Ljava/lang/Object;"),
   NATIVE_METHOD(Object, notify, "!()V"),
   NATIVE_METHOD(Object, notifyAll, "!()V"),
   OVERLOADED_NATIVE_METHOD(Object, wait, "!()V", wait),
   OVERLOADED_NATIVE_METHOD(Object, wait, "!(JI)V", waitJI),
-  NATIVE_METHOD(Object, equalsWithStubCheck, "!(Ljava/lang/Object;)Z"),
 };
 
 void register_java_lang_Object(JNIEnv* env) {
