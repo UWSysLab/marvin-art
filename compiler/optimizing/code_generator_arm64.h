@@ -573,6 +573,14 @@ class CodeGeneratorARM64 : public CodeGenerator {
   // stub, and if it does, swap in the corresponding object on-demand if
   // necessary and then replace the stub pointer in objectReg with a pointer
   // to the swapped-in object.
+  void GenerateStubCheckAndSwapCode(vixl::Register objectReg,
+                                    const std::vector<vixl::CPURegister> & registersToMaybeSave,
+                                    LocationSummary * locations);
+
+  void GenerateRestoreStub(vixl::Register objectReg);
+
+  // Identify which registers need to be saved on the stack before a procedure
+  // call.
   //
   // NOTE: this method is super hack-y and probably could be written more
   // elegantly if I had a better understanding of the abstractions that VIXL
@@ -585,11 +593,16 @@ class CodeGeneratorARM64 : public CodeGenerator {
   // case, and if we really do need to have the caller explicitly pass in
   // additional registers to save, add documentation to make the purpose of
   // registersToMaybeSave clear.
-  void GenerateStubCheckAndSwapCode(vixl::Register objectReg,
-                                    const std::vector<vixl::CPURegister> & registersToMaybeSave,
-                                    LocationSummary * locations);
+  std::vector<vixl::CPURegister> IdentifyRegistersToSave(
+                                     const std::vector<vixl::CPURegister> & registersToMaybeSave,
+                                     LocationSummary * locations);
 
-  void GenerateRestoreStub(vixl::Register objectReg);
+  int ComputeStackGrowthSize(const std::vector<vixl::CPURegister> & registersToSave);
+
+  // Generate code to save the registers in the given list onto the stack and
+  // restore them from the stack.
+  void GenerateSaveRegisters(const std::vector<vixl::CPURegister> & registersToSave);
+  void GenerateRestoreRegisters(const std::vector<vixl::CPURegister> & savedRegisters);
 
   // Generate code to check the IgnoreReadFlag of an object, and if it is not
   // set, increment the read counter byte in the object header.

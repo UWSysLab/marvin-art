@@ -3816,8 +3816,6 @@ void CodeGeneratorARM64::GenerateStaticOrDirectCall(HInvokeStaticOrDirect* invok
 
 void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
       const std::vector<CPURegister> & registersToMaybeSave, LocationSummary * locations) {
-  const int REGISTER_WIDTH = 8;
-
   UseScratchRegisterScope temps(GetVIXLAssembler());
   vixl::Label stubCheckDoneLabel;
   vixl::Label swapDoneLabel;
@@ -3846,6 +3844,61 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   // Skip SwapInOnDemand() call if stub has a non-null object_address_
   __ Cbnz(temp, &swapDoneLabel);
 
+  std::vector<CPURegister> registersToSave = IdentifyRegistersToSave(registersToMaybeSave,
+                                                                     locations);
+  GenerateSaveRegisters(registersToSave);
+
+  // Call SwapInOnDemand()
+  Primitive::Type type = Primitive::kPrimNot;
+  InvokeRuntimeCallingConvention callingConvention;
+  MoveLocation(LocationFrom(callingConvention.GetRegisterAt(0)), LocationFrom(objectReg), type);
+  int32_t entryPointOffset = QUICK_ENTRY_POINT(pSwapInOnDemand);
+  __ Ldr(lr, MemOperand(tr, entryPointOffset));
+  __ Blr(lr);
+
+  GenerateRestoreRegisters(registersToSave);
+
+  __ Bind(&swapDoneLabel);
+
+  // Store stub address in the object header so that GenerateRestoreStub() can
+  // restore it later.
+  //
+  // Note: this code might be confusing because the register named objectReg
+  // actually contains the stub address right now, and the register named temp
+  // will hold the address of the corresponding real object.
+  Load(Primitive::kPrimInt, temp, objectAddrOperand); // temp now holds object_address_
+  Offset stubAddrOffset(12);
+  MemOperand stubAddrOperand = HeapOperandFrom(LocationFrom(temp), stubAddrOffset);
+  Store(Primitive::kPrimInt, objectReg.W(), stubAddrOperand);
+
+  // Replace stub pointer in register with pointer to swapped-in object
+  __ Mov(objectReg, temp);
+
+  __ Bind(&stubCheckDoneLabel);
+}
+
+void CodeGeneratorARM64::GenerateRestoreStub(Register objectReg) {
+  UseScratchRegisterScope temps(GetVIXLAssembler());
+  vixl::Label doneLabel;
+
+  Register temp = temps.AcquireW();
+  CHECK(temp.code() != 0);
+
+  // Note: unlike in the GenerateStubCheckAndSwapCode() code above, in this
+  // method, the register named objectReg is now holding a real object, and
+  // the register named temp will hold the stub address.
+  Offset stubAddrOffset(12);
+  MemOperand stubAddrOperand = HeapOperandFrom(LocationFrom(objectReg), stubAddrOffset);
+  Load(Primitive::kPrimInt, temp, stubAddrOperand);
+  __ Cbz(temp, &doneLabel);
+  __ Mov(objectReg, temp);
+  Register zeroReg(kZeroRegCode, 32);
+  Store(Primitive::kPrimInt, zeroReg, stubAddrOperand);
+  __ Bind(&doneLabel);
+}
+
+std::vector<CPURegister> CodeGeneratorARM64::IdentifyRegistersToSave(
+    const std::vector<vixl::CPURegister> & registersToMaybeSave, LocationSummary * locations) {
   std::set<int> coreRegCodes; // VIXL register codes
   std::set<int> fpRegCodes;   // VIXL register codes
 
@@ -3907,6 +3960,13 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
     registersToSave.push_back(VRegister::DRegFromCode(*it));
   }
 
+  return registersToSave;
+}
+
+const int REGISTER_WIDTH = 8;
+
+int CodeGeneratorARM64::ComputeStackGrowthSize(
+    const std::vector<CPURegister> & registersToSave) {
   // Calculate number of bytes to grow the stack
   int stackGrowthSize = 0;
   if (registersToSave.size() > 0) {
@@ -3916,11 +3976,14 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
       stackGrowthSize = stackGrowthSize + (16 - stackGrowthSize % 16);
     }
   }
+  return stackGrowthSize;
+}
 
-  // Save registers onto stack
+void CodeGeneratorARM64::GenerateSaveRegisters(
+    const std::vector<CPURegister> & registersToSave) {
+  int stackGrowthSize = ComputeStackGrowthSize(registersToSave);
   if (registersToSave.size() > 0) {
     __ Sub(sp, sp, stackGrowthSize);
-
     size_t i = 0;
     while (i < registersToSave.size()) {
       if (i < registersToSave.size() - 1) {
@@ -3933,69 +3996,25 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
       }
     }
   }
+}
 
-  // Call SwapInOnDemand()
-  Primitive::Type type = Primitive::kPrimNot;
-  InvokeRuntimeCallingConvention callingConvention;
-  MoveLocation(LocationFrom(callingConvention.GetRegisterAt(0)), LocationFrom(objectReg), type);
-  int32_t entryPointOffset = QUICK_ENTRY_POINT(pSwapInOnDemand);
-  __ Ldr(lr, MemOperand(tr, entryPointOffset));
-  __ Blr(lr);
-
-  // Restore registers from stack
-  if (registersToSave.size() > 0) {
+void CodeGeneratorARM64::GenerateRestoreRegisters(
+    const std::vector<CPURegister> & savedRegisters) {
+  int stackGrowthSize = ComputeStackGrowthSize(savedRegisters);
+  if (savedRegisters.size() > 0) {
     size_t i = 0;
-    while (i < registersToSave.size()) {
-      if (i < registersToSave.size() - 1) {
-        __ Ldp(registersToSave[i], registersToSave[i + 1], MemOperand(sp, i * REGISTER_WIDTH));
+    while (i < savedRegisters.size()) {
+      if (i < savedRegisters.size() - 1) {
+        __ Ldp(savedRegisters[i], savedRegisters[i + 1], MemOperand(sp, i * REGISTER_WIDTH));
         i += 2;
       }
       else {
-        __ Ldr(registersToSave[i], MemOperand(sp, i * REGISTER_WIDTH));
+        __ Ldr(savedRegisters[i], MemOperand(sp, i * REGISTER_WIDTH));
         i++;
       }
     }
-
     __ Add(sp, sp, stackGrowthSize);
   }
-
-  __ Bind(&swapDoneLabel);
-
-  // Store stub address in the object header so that GenerateRestoreStub() can
-  // restore it later.
-  //
-  // Note: this code might be confusing because the register named objectReg
-  // actually contains the stub address right now, and the register named temp
-  // will hold the address of the corresponding real object.
-  Load(Primitive::kPrimInt, temp, objectAddrOperand); // temp now holds object_address_
-  Offset stubAddrOffset(12);
-  MemOperand stubAddrOperand = HeapOperandFrom(LocationFrom(temp), stubAddrOffset);
-  Store(Primitive::kPrimInt, objectReg.W(), stubAddrOperand);
-
-  // Replace stub pointer in register with pointer to swapped-in object
-  __ Mov(objectReg, temp);
-
-  __ Bind(&stubCheckDoneLabel);
-}
-
-void CodeGeneratorARM64::GenerateRestoreStub(Register objectReg) {
-  UseScratchRegisterScope temps(GetVIXLAssembler());
-  vixl::Label doneLabel;
-
-  Register temp = temps.AcquireW();
-  CHECK(temp.code() != 0);
-
-  // Note: unlike in the GenerateStubCheckAndSwapCode() code above, in this
-  // method, the register named objectReg is now holding a real object, and
-  // the register named temp will hold the stub address.
-  Offset stubAddrOffset(12);
-  MemOperand stubAddrOperand = HeapOperandFrom(LocationFrom(objectReg), stubAddrOffset);
-  Load(Primitive::kPrimInt, temp, stubAddrOperand);
-  __ Cbz(temp, &doneLabel);
-  __ Mov(objectReg, temp);
-  Register zeroReg(kZeroRegCode, 32);
-  Store(Primitive::kPrimInt, zeroReg, stubAddrOperand);
-  __ Bind(&doneLabel);
 }
 
 void CodeGeneratorARM64::GenerateIncrReadCounter(Register objectReg) {
