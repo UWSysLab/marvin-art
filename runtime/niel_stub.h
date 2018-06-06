@@ -92,6 +92,9 @@ class Stub {
     uint32_t padding_c_;
 };
 
+// Used as entry point for compiled code
+void PopulateStub(Stub * stub, mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_);
+
 } // namespace swap
 } // namespace niel
 } // namespace art

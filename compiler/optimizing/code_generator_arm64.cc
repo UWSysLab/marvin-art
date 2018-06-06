@@ -1746,6 +1746,9 @@ void InstructionCodeGeneratorARM64::HandleFieldSet(HInstruction* instruction,
   codegen_->GenerateIncrWriteCounter(obj);
   codegen_->GenerateSetDirtyBit(obj);
   codegen_->GenerateRestoreStub(obj);
+  if (field_type == Primitive::kPrimNot) {
+    codegen_->GenerateUpdateStub(obj, registersToMaybeSave, instruction->GetLocations());
+  }
 }
 
 void InstructionCodeGeneratorARM64::HandleBinaryOp(HBinaryOperation* instr) {
@@ -3894,6 +3897,44 @@ void CodeGeneratorARM64::GenerateRestoreStub(Register objectReg) {
   __ Mov(objectReg, temp);
   Register zeroReg(kZeroRegCode, 32);
   Store(Primitive::kPrimInt, zeroReg, stubAddrOperand);
+  __ Bind(&doneLabel);
+}
+
+void CodeGeneratorARM64::GenerateUpdateStub(Register stubReg,
+    const std::vector<CPURegister> & registersToMaybeSave, LocationSummary * locations) {
+  UseScratchRegisterScope temps(GetVIXLAssembler());
+  vixl::Label doneLabel;
+
+  Register temp = temps.AcquireW();
+  CHECK(temp.code() != 0);
+
+  // Read stub flag of object
+  Offset flagsOffset(8);
+  MemOperand flagsOperand = HeapOperandFrom(LocationFrom(stubReg), flagsOffset);
+  Load(Primitive::kPrimBoolean, temp, flagsOperand); // temp now holds flags byte
+  __ Lsr(temp, temp, 7); // temp now holds stub flag
+
+  // Skip stub update if stub flag is not set
+  __ Cbz(temp, &doneLabel);
+
+  // Load object address from stub
+  Offset objectAddrOffset(0);
+  MemOperand objectAddrOperand = HeapOperandFrom(LocationFrom(stubReg), objectAddrOffset);
+  Load(Primitive::kPrimInt, temp, objectAddrOperand); // temp now holds object_address_
+
+  std::vector<CPURegister> registersToSave = IdentifyRegistersToSave(registersToMaybeSave,
+                                                                     locations);
+  // Call PopulateStub()
+  GenerateSaveRegisters(registersToSave);
+  Primitive::Type type = Primitive::kPrimNot;
+  InvokeRuntimeCallingConvention callingConvention;
+  MoveLocation(LocationFrom(callingConvention.GetRegisterAt(0)), LocationFrom(stubReg), type);
+  MoveLocation(LocationFrom(callingConvention.GetRegisterAt(1)), LocationFrom(temp), type);
+  int32_t entryPointOffset = QUICK_ENTRY_POINT(pPopulateStub);
+  __ Ldr(lr, MemOperand(tr, entryPointOffset));
+  __ Blr(lr);
+  GenerateRestoreRegisters(registersToSave);
+
   __ Bind(&doneLabel);
 }
 

@@ -23,6 +23,7 @@
 #include "entrypoints/math_entrypoints.h"
 #include "entrypoints/runtime_asm_entrypoints.h"
 #include "interpreter/interpreter.h"
+#include "niel_stub.h"
 #include "niel_swap.h"
 
 namespace art {
@@ -91,6 +92,7 @@ void InitEntryPoints(JniEntryPoints* jpoints, QuickEntryPoints* qpoints) {
   qpoints->pReadBarrierForRootSlow = artReadBarrierForRootSlow;
 
   qpoints->pSwapInOnDemand = niel::swap::SwapInOnDemand;
+  qpoints->pPopulateStub = niel::swap::PopulateStub;
 };
 
 }  // namespace art

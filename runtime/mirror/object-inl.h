@@ -910,7 +910,18 @@ template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVer
     bool kIsVolatile>
 inline void Object::SetFieldObjectWithoutWriteBarrier(MemberOffset field_offset,
                                                       Object* new_value) {
-  SWAP_PREAMBLE_TEMPLATE(SetFieldObjectWithoutWriteBarrier, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags, kIsVolatile), field_offset, new_value)
+  if (UNLIKELY(GetStubFlag())) {
+    niel::swap::Stub * stub = (niel::swap::Stub *)this;
+    if (UNLIKELY(stub->GetObjectAddress() == nullptr)) {
+      niel::swap::SwapInOnDemand(stub);
+    }
+    ((Object *)(stub->GetObjectAddress()))->SetFieldObjectWithoutWriteBarrier
+        <kTransactionActive, kCheckTransaction, kVerifyFlags, kIsVolatile>
+        (field_offset, new_value);
+    stub->PopulateFrom(stub->GetObjectAddress());
+    return;
+  }
+
   if (kCheckTransaction) {
     DCHECK_EQ(kTransactionActive, Runtime::Current()->IsActiveTransaction());
   }
@@ -947,7 +958,17 @@ inline void Object::SetFieldObjectWithoutWriteBarrier(MemberOffset field_offset,
 template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVerifyFlags,
     bool kIsVolatile>
 inline void Object::SetFieldObject(MemberOffset field_offset, Object* new_value) {
-  SWAP_PREAMBLE_TEMPLATE(SetFieldObject, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags, kIsVolatile), field_offset, new_value)
+  if (UNLIKELY(GetStubFlag())) {
+    niel::swap::Stub * stub = (niel::swap::Stub *)this;
+    if (UNLIKELY(stub->GetObjectAddress() == nullptr)) {
+      niel::swap::SwapInOnDemand(stub);
+    }
+    ((Object *)(stub->GetObjectAddress()))->SetFieldObject<kTransactionActive,
+        kCheckTransaction, kVerifyFlags, kIsVolatile>(field_offset, new_value);
+    stub->PopulateFrom(stub->GetObjectAddress());
+    return;
+  }
+
   SetFieldObjectWithoutWriteBarrier<kTransactionActive, kCheckTransaction, kVerifyFlags,
       kIsVolatile>(field_offset, new_value);
   if (new_value != nullptr) {

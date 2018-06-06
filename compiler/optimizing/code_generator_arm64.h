@@ -579,6 +579,10 @@ class CodeGeneratorARM64 : public CodeGenerator {
 
   void GenerateRestoreStub(vixl::Register objectReg);
 
+  void GenerateUpdateStub(vixl::Register stubReg,
+                          const std::vector<vixl::CPURegister> & registersToMaybeSave,
+                          LocationSummary * locations);
+
   // Identify which registers need to be saved on the stack before a procedure
   // call.
   //

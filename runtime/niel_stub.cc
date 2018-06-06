@@ -144,6 +144,10 @@ void Stub::SemanticDump() {
     LOG(INFO) << "NIEL end semantic dump for stub @" << this;
 }
 
+void PopulateStub(Stub * stub, mirror::Object * object) {
+    stub->PopulateFrom(object);
+}
+
 } // namespace swap
 } // namespace niel
 } // namespace art
