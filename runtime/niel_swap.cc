@@ -345,37 +345,36 @@ int writeToSwapFile(Thread * self, gc::Heap * heap, mirror::Object * object, boo
         std::memcpy(objectData, object, objectSize);
 
         /*
-         * The code below is a bit convoluted because an object that has a stub
-         * will be represented in the objectOffsetMap (and objectSizeMap) by
-         * its stub's address. As a result, we need to first check if the
-         * object itself is in the objectOffsetMap, and then check if it has a
-         * stub (the stub is guaranteed to be a key in the
-         * objectOffsetMap/objectSizeMap).
+         * The code below is a bit convoluted because the key used to look up
+         * an object's data in the objectOffsetMap and objectSizeMap differs
+         * depending on whether the object has a stub. If the object has a
+         * stub, its stub is the key; if the object does not have a stub (i.e.,
+         * it was selected for swapping since the last background transition),
+         * the object itself is the key.
          */
         bool objectInSwapFileMaps = false;
         Stub * stub = nullptr;
+
+        objectStubMapMutex.SharedLock(self);
+        if (objectStubMap.find(object) != objectStubMap.end()) {
+            stub = objectStubMap[object];
+        }
+        objectStubMapMutex.SharedUnlock(self);
 
         swapFileMapsMutex.SharedLock(self);
         objectInSwapFileMaps = (objectOffsetMap.find(object) != objectOffsetMap.end());
         swapFileMapsMutex.SharedUnlock(self);
 
-        if (!objectInSwapFileMaps) {
-            objectStubMapMutex.SharedLock(self);
-            if (objectStubMap.find(object) != objectStubMap.end()) {
-                stub = objectStubMap[object];
-            }
-            objectStubMapMutex.SharedUnlock(self);
-        }
+        CHECK(!(stub != nullptr && objectInSwapFileMaps));
 
         void * swapStateKey = nullptr;
         bool inSwapFile = false;
-
-        if (objectInSwapFileMaps) {
-            swapStateKey = object;
+        if (stub != nullptr) {
+            swapStateKey = stub;
             inSwapFile = true;
         }
-        else if (stub != nullptr) {
-            swapStateKey = stub;
+        else if (objectInSwapFileMaps) {
+            swapStateKey = object;
             inSwapFile = true;
         }
         else {
