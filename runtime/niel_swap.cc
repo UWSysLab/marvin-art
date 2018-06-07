@@ -144,8 +144,10 @@ ReaderWriterMutex swapFileMapsMutex("SwapFileMapsMutex", kDefaultMutexLevel);
 // compaction (as it does for marlin builds running on a Pixel XL).
 Mutex swapFileMutex("SwapFileMutex", kLoggingLock);
 
-// Not locked but assumed to be only touched in one thread (because all Tasks,
-// including GC, run on the same fixed thread)
+/*
+ * Not locked but assumed to be only touched in one thread (because all Tasks,
+ * including GC, run on the same fixed thread)
+ */
 uint32_t pid = 0;
 std::map<void *, void *> remappingTable;
 std::map<void *, void *> semiSpaceRemappingTable; //TODO: combine with normal remapping table?
@@ -158,19 +160,26 @@ long freedSize = 0;
 int swapfileObjects = 0;
 int swapfileSize = 0;
 
-// Not locked but only modified in Heap::UpdateProcessState() and read in Tasks
+/*
+ * Not locked but only modified in Heap::UpdateProcessState() and read in Tasks
+ */
 bool appInForeground = true;
 
-// Not locked but will only ever switch from false to true, and it shouldn't
-// cause any correctness issues if an app thread incorrectly reads it as false
-// for a little while after it has changed
+/*
+ * Not locked but will only ever switch from false to true, and it shouldn't
+ * cause any correctness issues if an app thread incorrectly reads it as false
+ * for a little while after it has changed
+ */
 bool swapEnabled = false;
 
-// Locked by swapFileMutex
+/*
+ * Locked by swapFileMutex
+ */
 std::fstream swapfile;
 
-// Locked by swapFileMapsMutex
-//
+/*
+ * Locked by swapFileMapsMutex
+ */
 // These maps describe the position and size of checkpointed objects in the
 // swap file. If a stub has been created for an object, the key associated with
 // the object's information is the stub pointer. If no stub has been created
@@ -178,12 +187,15 @@ std::fstream swapfile;
 std::map<void *, std::streampos> objectOffsetMap;
 std::map<void *, size_t> objectSizeMap;
 
-// Locked by writeQueueMutex
+/*
+ * Locked by writeQueueMutex
+ */
 std::vector<mirror::Object *> writeQueue;
 std::set<mirror::Object *> writeSet; // prevents duplicate entries in writeQueue
 
-// Locked by objectStubMapMutex
-//
+/*
+ * Locked by objectStubMapMutex
+ */
 // The objectStubMap maps every memory-resident "swap candidate" object that
 // has a stub to its stub.
 std::map<mirror::Object *, Stub *> objectStubMap;
@@ -833,6 +845,7 @@ mirror::Object * swapInObject(Thread * self, gc::Heap * heap, Stub * stub,
 //      but is freed when stub is freed
 void SwapInOnDemand(Stub * stub) {
     CHECK(swapEnabled);
+    CHECK(stub->GetObjectAddress() == nullptr);
 
     gc::Heap * heap = getHeapChecked();
     CHECK(heap->GetRosAllocSpace()->Contains((mirror::Object *)stub));
