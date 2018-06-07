@@ -845,7 +845,6 @@ mirror::Object * swapInObject(Thread * self, gc::Heap * heap, Stub * stub,
 //      but is freed when stub is freed
 void SwapInOnDemand(Stub * stub) {
     CHECK(swapEnabled);
-    CHECK(stub->GetObjectAddress() == nullptr);
 
     gc::Heap * heap = getHeapChecked();
     CHECK(heap->GetRosAllocSpace()->Contains((mirror::Object *)stub));
