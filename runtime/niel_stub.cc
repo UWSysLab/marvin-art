@@ -66,7 +66,7 @@ class CopyRefsVisitor {
                     bool is_static ATTRIBUTE_UNUSED) const
             SHARED_REQUIRES(Locks::mutator_lock_) {
         if (obj->GetFieldObject<mirror::Object>(offset) != stub_->GetReference(cur_ref_)) {
-            obj->SetFieldObject<false>(offset, stub_->GetReference(cur_ref_));
+            obj->SetFieldObjectWithoutWriteBarrier<false>(offset, stub_->GetReference(cur_ref_));
         }
         cur_ref_++;
     }

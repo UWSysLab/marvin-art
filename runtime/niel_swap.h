@@ -78,6 +78,11 @@ void SwapInOnDemand(Stub * stub) SHARED_REQUIRES(Locks::mutator_lock_);
  */
 void SetInForeground(bool inForeground);
 
+
+// Not a part of public swap API. Utility function that would be in
+// niel_common.h, except it needs to have access to the swappedInSpace.
+bool objectInSwappableSpace(gc::Heap * heap, mirror::Object * obj);
+
 } // namespace swap
 } // namespace niel
 } // namespace art

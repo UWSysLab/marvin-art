@@ -55,11 +55,6 @@ inline bool objectIsSwappableType(mirror::Object * obj)
             );
 }
 
-inline bool objectInSwappableSpace(gc::Heap * heap, mirror::Object * obj) {
-    return (   heap->GetRosAllocSpace()->Contains(obj)
-            || heap->GetLargeObjectsSpace()->Contains(obj));
-}
-
 inline gc::Heap * getHeapChecked() {
     Runtime * runtime = Runtime::Current();
     if (runtime == nullptr) {

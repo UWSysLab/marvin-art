@@ -18,6 +18,7 @@
 #include "niel_bivariate_histogram.h"
 #include "niel_common.h"
 #include "niel_histogram.h"
+#include "niel_swap.h"
 
 namespace art {
 
@@ -287,7 +288,7 @@ void CountAccess(gc::collector::GarbageCollector * gc, mirror::Object * object) 
                 noSwapFlagTotalSize += objectSize;
             }
             gc::Heap * heap = getHeapChecked();
-            if (!objectInSwappableSpace(heap, object)) {
+            if (!swap::objectInSwappableSpace(heap, object)) {
                 notInSpaceTotalSize += objectSize;
             }
             if (!isSwappableType) {

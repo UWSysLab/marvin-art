@@ -10,6 +10,7 @@
 #include "niel_scoped_timer.h"
 #include "niel_stub-inl.h"
 #include "runtime.h"
+#include "thread_list.h"
 
 #include <cstdio>
 #include <cstring>
@@ -36,6 +37,8 @@ const uint64_t WRITE_TASK_FG_MAX_DURATION = 300000000; // ns
 const uint64_t WRITE_TASK_BG_MAX_DURATION = 300000000; // ns
 const uint64_t WRITE_TASK_FG_WAIT_TIME = 3000000000; // ns
 const uint64_t WRITE_TASK_BG_WAIT_TIME = 10000000000; // ns
+const uintptr_t SWAPPED_IN_SPACE_START = 0xc0000000;
+const uint64_t SWAPPED_IN_SPACE_SIZE = 512 * 1024 * 1024; // bytes
 
 // Return values of writeToSwapFile().
 const int SWAPFILE_WRITE_OK = 0;
@@ -65,8 +68,8 @@ int writeToSwapFile(Thread * self, gc::Heap * heap, mirror::Object * object, boo
  * Allocates space for the object in memory and copies the object from the swap
  * file into memory.
  */
-mirror::Object * swapInObject(Thread * self, gc::Heap * heap, Stub * stub,
-                              std::streampos objOffset, size_t objSize)
+mirror::Object * swapInObject(Thread * self, Stub * stub, std::streampos objOffset,
+                              size_t objSize)
         SHARED_REQUIRES(Locks::mutator_lock_);
 
 /*
@@ -171,6 +174,13 @@ bool appInForeground = true;
  * for a little while after it has changed
  */
 bool swapEnabled = false;
+
+/*
+ * Not locked, but should only be touched by a thread holding the mutator_lock_
+ *
+ * TODO: make locked by mutator_lock_
+ */
+gc::space::LargeObjectSpace * swappedInSpace = nullptr;
 
 /*
  * Locked by swapFileMutex
@@ -279,6 +289,13 @@ class WriteTask : public gc::HeapTask {
     }
 };
 
+bool objectInSwappableSpace(gc::Heap * heap, mirror::Object * obj) {
+    return (   heap->GetRosAllocSpace()->Contains(obj)
+            || heap->GetLargeObjectsSpace()->Contains(obj)
+            || swappedInSpace->Contains(obj)
+           );
+}
+
 void SetInForeground(bool inForeground) {
     appInForeground = inForeground;
     if (inForeground) {
@@ -319,9 +336,7 @@ int writeToSwapFile(Thread * self, gc::Heap * heap, mirror::Object * object, boo
     int result = SWAPFILE_WRITE_OK;
     *ioError = false;
 
-    CHECK(   heap->GetRosAllocSpace()->Contains(object)
-          || heap->GetLargeObjectsSpace()->Contains(object))
-        << " addr " << object;
+    CHECK(objectInSwappableSpace(heap, object)) << " addr " << object;
 
     bool validObject = false;
     if (object != nullptr) {
@@ -340,7 +355,7 @@ int writeToSwapFile(Thread * self, gc::Heap * heap, mirror::Object * object, boo
         size_t objectSize = object->SizeOf();
         object->ClearIgnoreReadFlag();
 
-        char * objectData = new char[objectSize];
+        char * objectData = (char *)malloc(objectSize);
         object->ClearDirtyBit();
         std::memcpy(objectData, object, objectSize);
 
@@ -424,7 +439,7 @@ int writeToSwapFile(Thread * self, gc::Heap * heap, mirror::Object * object, boo
                 swapFileMutex.ExclusiveUnlock(self);
             }
         }
-        delete[] objectData;
+        free(objectData);
     }
     return result;
 }
@@ -558,6 +573,8 @@ void patchStubReferences(Thread * self, gc::Heap * heap) {
     gc::space::RosAllocSpace * rosAllocSpace = heap->GetRosAllocSpace();
     rosAllocSpace->Walk(&PatchCallback, nullptr);
 
+    swappedInSpace->Walk(&PatchCallback, nullptr);
+
     GlobalRefRootVisitor visitor;
     Runtime::Current()->VisitRoots(&visitor, kVisitRootFlagAllRoots);
 
@@ -573,10 +590,11 @@ void replaceDataStructurePointers(Thread * self, const std::map<void *, void *> 
     std::set<void *> swapFileMapsRemoveSet;
     for (auto it = objectOffsetMap.begin(); it != objectOffsetMap.end(); it++) {
         if (!addrTable.count(it->first)) {
-            // Assumes that a pointer not in the large object space was in the
-            // old RosAlloc space.
-            if (!getHeapChecked()->GetLargeObjectsSpace()
-                                 ->Contains((mirror::Object *)it->first)) {
+            // Assumes that a pointer not in the large object space or
+            // SwappedInSpace was in the old RosAlloc space.
+            if (   !getHeapChecked()->GetLargeObjectsSpace()
+                                    ->Contains((mirror::Object *)it->first)
+                && !swappedInSpace->Contains((mirror::Object *)it->first)) {
               swapFileMapsRemoveSet.insert(it->first);
             }
         }
@@ -610,33 +628,41 @@ void replaceDataStructurePointers(Thread * self, const std::map<void *, void *> 
 
     objectStubMapMutex.ExclusiveLock(self);
     std::map<mirror::Object *, Stub *> newObjectStubMap;
-    int debugCounter = 0;
     for (auto it = objectStubMap.begin(); it != objectStubMap.end(); it++) {
-        mirror::Object * oldKey = it->first;
-        Stub * oldVal = it->second;
-        mirror::Object * newKey = nullptr;
-        Stub * newVal = nullptr;
-        if (addrTable.count(oldKey)) {
-            newKey = (mirror::Object *)addrTable.at(oldKey);
+        mirror::Object * obj = it->first;
+        Stub * oldStub = it->second;
+        Stub * newStub = nullptr;
+
+        CHECK(swappedInSpace->Contains(obj));
+        CHECK(!addrTable.count(obj));
+
+        if (addrTable.count(oldStub)) {
+            newStub = (Stub *)addrTable.at(oldStub);
         }
         else {
-            newKey = oldKey;
+            newStub = oldStub;
         }
-        if (addrTable.count(oldVal)) {
-            newVal = (Stub *)addrTable.at(oldVal);
+
+        // Free the swapped-in object if its stub is being freed from the
+        // RosAlloc space
+        if (removeUntouchedRosAlloc && !addrTable.count(oldStub)) {
+            // Duplicated code from GcRecordFree()'s swapped-in object handling
+            //
+            // TODO: eliminate duplicated code
+            swappedInSpace->Free(self, obj);
+            if (swapOutSet.count(obj)) {
+                swapOutSet.erase(obj);
+            }
+            writeQueueMutex.ExclusiveLock(self);
+            auto pos = std::find(writeQueue.begin(), writeQueue.end(), obj);
+            if (pos != writeQueue.end()) {
+                writeQueue.erase(pos);
+                writeSet.erase(obj);
+            }
+            writeQueueMutex.ExclusiveUnlock(self);
         }
         else {
-            newVal = oldVal;
-        }
-        // As above, assumes that a pointer that is not in the large object
-        // space was in the old RosAlloc space
-        bool shouldRemove = (   !addrTable.count(oldKey)
-                             && !getHeapChecked()->GetLargeObjectsSpace()->Contains(oldKey));
-        if (!removeUntouchedRosAlloc || !shouldRemove) {
-          newObjectStubMap[newKey] = newVal;
-        }
-        else {
-          debugCounter++;
+            newObjectStubMap[obj] = newStub;
         }
     }
     objectStubMap = newObjectStubMap;
@@ -691,8 +717,7 @@ void SwapObjectsOut(Thread * self, gc::Heap * heap) {
     for (auto it = swapOutSet.begin(); it != swapOutSet.end(); it++) {
         mirror::Object * obj = *it;
 
-        CHECK(   heap->GetRosAllocSpace()->Contains(obj)
-              || heap->GetLargeObjectsSpace()->Contains(obj));
+        CHECK(objectInSwappableSpace(heap, obj));
 
         Stub * stub = nullptr;
         objectStubMapMutex.ExclusiveLock(self);
@@ -737,8 +762,14 @@ void SwapObjectsOut(Thread * self, gc::Heap * heap) {
         if (heap->GetLargeObjectsSpace()->Contains(obj)) {
             FreeFromLargeObjectSpace(self, heap, obj);
         }
-        else {
+        else if (heap->GetRosAllocSpace()->Contains(obj)) {
             FreeFromRosAllocSpace(self, heap, obj);
+        }
+        else if (swappedInSpace->Contains(obj)) {
+            swappedInSpace->FreeList(self, 1, &obj);
+        }
+        else {
+            LOG(FATAL) << "NIELERROR object " << obj << " not in any space";
         }
     }
 
@@ -789,35 +820,19 @@ void SemiSpaceUpdateDataStructures(Thread * self) {
     semiSpaceRemappingTable.clear();
 }
 
-mirror::Object * swapInObject(Thread * self, gc::Heap * heap, Stub * stub,
-                              std::streampos objOffset, size_t objSize) {
+mirror::Object * swapInObject(Thread * self, Stub * stub, std::streampos objOffset,
+                              size_t objSize) {
     CHECK(stub->GetObjectAddress() == nullptr);
 
     mirror::Object * newObj = nullptr;
-    if (stub->GetLargeObjectFlag()) {
-        //TODO: handle allocation failure like Heap::AllocObjectWithAllocator()
-        size_t bytesAllocated;
-        size_t usableSize;
-        size_t bytesTlBulkAllocated;
-        newObj = heap->GetLargeObjectsSpace()
-                     ->Alloc(self,
-                             objSize,
-                             &bytesAllocated,
-                             &usableSize,
-                             &bytesTlBulkAllocated);
-    }
-    else {
-        //TODO: handle allocation failure like Heap::AllocObjectWithAllocator()
-        size_t bytesAllocated;
-        size_t usableSize;
-        size_t bytesTlBulkAllocated;
-        newObj = heap->GetRosAllocSpace()
-                     ->Alloc(self,
-                             objSize,
-                             &bytesAllocated,
-                             &usableSize,
-                             &bytesTlBulkAllocated);
-    }
+    size_t bytesAllocated;
+    size_t usableSize;
+    size_t bytesTlBulkAllocated;
+    newObj = swappedInSpace->Alloc(self,
+                                   objSize,
+                                   &bytesAllocated,
+                                   &usableSize,
+                                   &bytesTlBulkAllocated);
     CHECK(newObj != nullptr);
 
     swapFileMutex.ExclusiveLock(self);
@@ -855,7 +870,7 @@ void SwapInOnDemand(Stub * stub) {
     size_t objSize = objectSizeMap[stub];
     swapFileMapsMutex.SharedUnlock(self);
 
-    swapInObject(self, heap, stub, objOffset, objSize);
+    swapInObject(self, stub, objOffset, objSize);
 }
 
 void SwapObjectsIn(gc::Heap * heap) {
@@ -880,7 +895,7 @@ void SwapObjectsIn(gc::Heap * heap) {
             // Only swap in object if it wasn't already swapped in on-demand
             mirror::Object * swappedInObj = stub->GetObjectAddress();
             if (swappedInObj == nullptr) {
-                swappedInObj = swapInObject(self, heap, stub, objOffset, objSize);
+                swappedInObj = swapInObject(self, stub, objOffset, objSize);
             }
         }
     }
@@ -912,6 +927,10 @@ void GcRecordFree(Thread * self, mirror::Object * object) {
         return;
     }
 
+    if (swappedInSpace->Contains(object)) {
+        return;
+    }
+
     writeQueueMutex.ExclusiveLock(self);
     auto writeQueuePos = std::find(writeQueue.begin(), writeQueue.end(), object);
     if (writeQueuePos != writeQueue.end()) {
@@ -936,11 +955,33 @@ void GcRecordFree(Thread * self, mirror::Object * object) {
         swapOutSet.erase(object);
     }
 
-    objectStubMapMutex.ExclusiveLock(self);
-    if (objectStubMap.count(object)) {
-        objectStubMap.erase(object);
+    if (object->GetStubFlag()) {
+        Stub * stub = (Stub *)object;
+        mirror::Object * swappedInObj = stub->GetObjectAddress();
+        if (swappedInObj != nullptr) {
+            CHECK(swappedInSpace->Contains(swappedInObj));
+            swappedInSpace->Free(self, swappedInObj);
+
+            objectStubMapMutex.ExclusiveLock(self);
+            CHECK(objectStubMap.count(swappedInObj));
+            CHECK_EQ(objectStubMap[swappedInObj], stub);
+            objectStubMap.erase(swappedInObj);
+            objectStubMapMutex.ExclusiveUnlock(self);
+
+            // A swapped-in object might be in the swapOutSet or writeQueue but
+            // will never be in the objectOffsetMap or objectSizeMap.
+            if (swapOutSet.count(swappedInObj)) {
+                swapOutSet.erase(swappedInObj);
+            }
+            writeQueueMutex.ExclusiveLock(self);
+            auto pos = std::find(writeQueue.begin(), writeQueue.end(), swappedInObj);
+            if (pos != writeQueue.end()) {
+                writeQueue.erase(pos);
+                writeSet.erase(swappedInObj);
+            }
+            writeQueueMutex.ExclusiveUnlock(self);
+        }
     }
-    objectStubMapMutex.ExclusiveUnlock(self);
 }
 
 void InitIfNecessary(Thread * self) {
@@ -991,6 +1032,24 @@ void InitIfNecessary(Thread * self) {
         LOG(ERROR) << "NIELERROR not scheduling first WriteTask due to IO error (package name "
                    << packageName << ")";
         return;
+    }
+
+    {
+        ScopedSuspendAll ssa("niel_init_swap");
+        uint8_t * start = (uint8_t *)SWAPPED_IN_SPACE_START;
+        swappedInSpace = gc::space::FreeListSpace::Create("SwappedInSpace",
+                                                          start,
+                                                          SWAPPED_IN_SPACE_SIZE);
+        getHeapChecked()->AddSpace(swappedInSpace);
+        if (swappedInSpace == nullptr) {
+            LOG(ERROR) << "NIELERROR SwappedInSpace is null";
+            return;
+        }
+        if (swappedInSpace->Begin() != (uint8_t *)SWAPPED_IN_SPACE_START) {
+            LOG(ERROR) << "NIELERROR SwappedInSpace begins at wrong address: "
+                       << (void *)swappedInSpace->Begin();
+            return;
+        }
     }
 
     swapEnabled = true;
@@ -1144,6 +1203,10 @@ void CheckAndUpdate(gc::collector::GarbageCollector * gc, mirror::Object * objec
     }
 
     if (object->GetStubFlag()) {
+        Stub * stub = (Stub *)object;
+        if (stub->GetObjectAddress() != nullptr) {
+            CheckAndUpdate(gc, stub->GetObjectAddress());
+        }
         return;
     }
 

@@ -36,7 +36,6 @@ inline void MarkSweep::ScanObjectVisit(mirror::Object* obj,
   DCHECK(IsMarked(obj)) << "Scanning unmarked object " << obj << "\n" << heap_->DumpSpaces();
   if (obj->GetStubFlag()) {
     niel::swap::Stub * stub = (niel::swap::Stub *)obj;
-    MarkObject(stub->GetObjectAddress());
     for (int i = 0; i < stub->GetNumRefs(); i++) {
       mirror::Object * ref = stub->GetReference(i);
       MarkObject(ref);
