@@ -1314,6 +1314,8 @@ void validateSwapFile(Thread * self) {
             LOG(ERROR) << "NIELERROR: object size " << objectSize << " is too small";
             error = true;
         }
+
+        delete[] objectData;
     }
 
     swapfile.seekp(curPos);
