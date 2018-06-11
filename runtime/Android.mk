@@ -163,6 +163,7 @@ LIBART_COMMON_SRC_FILES := \
   niel_common.cc \
   niel_histogram.cc \
   niel_instrumentation.cc \
+  niel_reclamation_table.cc \
   niel_stub.cc \
   niel_swap.cc \
   oat.cc \
