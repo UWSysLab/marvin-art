@@ -670,13 +670,23 @@ void replaceDataStructurePointers(Thread * self, const std::map<void *, void *> 
 }
 
 void FreeFromRosAllocSpace(Thread * self, gc::Heap * heap, mirror::Object * obj) {
+    obj->SetIgnoreReadFlag();
+    size_t objSize = obj->SizeOf();
+    obj->ClearIgnoreReadFlag();
+
     heap->GetRosAllocSpace()->GetLiveBitmap()->Clear(obj);
     heap->GetRosAllocSpace()->FreeList(self, 1, &obj);
+    heap->RecordFree(1, objSize);
 }
 
 void FreeFromLargeObjectSpace(Thread * self, gc::Heap * heap, mirror::Object * obj) {
+    obj->SetIgnoreReadFlag();
+    size_t objSize = obj->SizeOf();
+    obj->ClearIgnoreReadFlag();
+
     heap->GetLargeObjectsSpace()->GetLiveBitmap()->Clear(obj);
     heap->GetLargeObjectsSpace()->Free(self, obj);
+    heap->RecordFree(1, objSize);
 }
 
 void SwapObjectsOut(Thread * self, gc::Heap * heap) {
