@@ -84,13 +84,9 @@ long notSwappableTypeTotalSize = 0;
 
 Histogram smallObjectPointerFracHist(10, 0, 1); // objects <=200 bytes
 Histogram largeObjectPointerFracHist(10, 0, 1); // objects >200 bytes
-Histogram readCountHist(10, 1, 255);
-Histogram writeCountHist(10, 1, 255);
 Histogram readShiftRegHist(16, 0, 16);
 Histogram writeShiftRegHist(16, 0, 16);
 
-BivariateHistogram readsVsPointerFracHist(10, 1, 2400, 10, 0, 1);
-BivariateHistogram writesVsPointerFracHist(10, 1, 100, 10, 0, 1);
 BivariateHistogram readShiftRegVsPointerFracHist(16, 0, 16, 10, 0, 1);
 BivariateHistogram writeShiftRegVsPointerFracHist(16, 0, 16, 10, 0, 1);
 BivariateHistogram objectSizeVsPointerFracHist(10, 0, 1000, 10, 0, 1);
@@ -187,13 +183,9 @@ void StartAccessCount(gc::collector::GarbageCollector * gc) {
 
     smallObjectPointerFracHist.Clear();
     largeObjectPointerFracHist.Clear();
-    readCountHist.Clear();
-    writeCountHist.Clear();
     readShiftRegHist.Clear();
     writeShiftRegHist.Clear();
 
-    readsVsPointerFracHist.Clear();
-    writesVsPointerFracHist.Clear();
     readShiftRegVsPointerFracHist.Clear();
     writeShiftRegVsPointerFracHist.Clear();
     objectSizeVsPointerFracHist.Clear();
@@ -240,15 +232,11 @@ void CountAccess(gc::collector::GarbageCollector * gc, mirror::Object * object) 
         smallObjectTotalObjectSize += objectSize;
     }
 
-    uint8_t readCounterVal = object->GetReadCounter();
-    uint8_t writeCounterVal = object->GetWriteCounter();
+    bool wasRead = object->GetReadBit();
+    bool wasWritten = object->GetWriteBit();
 
-    bool wasRead = false;
-    bool wasWritten = false;
-
-    if (readCounterVal > 0) {
+    if (wasRead) {
         objectsRead += 1;
-        wasRead = true;
         readTotalPointerSize += sizeOfPointers;
         readTotalObjectSize += objectSize;
     }
@@ -257,9 +245,8 @@ void CountAccess(gc::collector::GarbageCollector * gc, mirror::Object * object) 
         unreadTotalObjectSize += objectSize;
     }
 
-    if (writeCounterVal > 0) {
+    if (wasWritten) {
         objectsWritten += 1;
-        wasWritten = true;
     }
 
     if (wasRead && wasWritten) {
@@ -269,13 +256,9 @@ void CountAccess(gc::collector::GarbageCollector * gc, mirror::Object * object) 
     uint8_t rsrVal = object->GetReadShiftRegister();
     uint8_t wsrVal = object->GetWriteShiftRegister();
 
-    readCountHist.Add(readCounterVal);
-    writeCountHist.Add(writeCounterVal);
     readShiftRegHist.Add(rsrVal);
     writeShiftRegHist.Add(wsrVal);
 
-    readsVsPointerFracHist.Add(readCounterVal, pointerSizeFrac);
-    writesVsPointerFracHist.Add(readCounterVal, pointerSizeFrac);
     readShiftRegVsPointerFracHist.Add(rsrVal, pointerSizeFrac);
     writeShiftRegVsPointerFracHist.Add(wsrVal, pointerSizeFrac);
     objectSizeVsPointerFracHist.Add(objectSize, pointerSizeFrac);
@@ -338,14 +321,8 @@ void FinishAccessCount(gc::collector::GarbageCollector * gc) {
               << smallObjectPointerFracHist.Print(true, true);
     LOG(INFO) << "NIEL pointer frac hist of large objects (scaled):\n"
               << largeObjectPointerFracHist.Print(true, true);
-    LOG(INFO) << "NIEL read count hist:\n" << readCountHist.Print(false, true);
-    LOG(INFO) << "NIEL write count hist:\n" << writeCountHist.Print(false, true);
     LOG(INFO) << "NIEL read shift register hist:\n" << readShiftRegHist.Print(false, true);
     LOG(INFO) << "NIEL write shift register hist:\n" << writeShiftRegHist.Print(false, true);
-    LOG(INFO) << "NIEL read count vs pointer frac hist:\n"
-              << readsVsPointerFracHist.Print(false);
-    LOG(INFO) << "NIEL write count vs pointer frac hist:\n"
-              << writesVsPointerFracHist.Print(false);
     LOG(INFO) << "NIEL read shift reg vs pointer frac hist:\n"
               << readShiftRegVsPointerFracHist.Print(false);
     LOG(INFO) << "NIEL write shift reg vs pointer frac hist:\n"

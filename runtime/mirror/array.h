@@ -70,7 +70,7 @@ class MANAGED Array : public Object {
       SHARED_REQUIRES(Locks::mutator_lock_) {
     SWAP_PREAMBLE(GetRawData, Array, component_size, index)
     if (!GetIgnoreReadFlag()) {
-      IncrReadCounter();
+      SetReadBit();
     }
     intptr_t data = reinterpret_cast<intptr_t>(this) + DataOffset(component_size).Int32Value() +
         + (index * component_size);

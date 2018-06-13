@@ -823,7 +823,7 @@ inline void Object::SetField(MemberOffset field_offset, kSize new_value) {
   } else {
     reinterpret_cast<Atomic<kSize>*>(addr)->StoreJavaData(new_value);
   }
-  IncrWriteCounter();
+  SetWriteBit();
   SetDirtyBit();
 }
 
@@ -831,7 +831,7 @@ template<typename kSize, bool kIsVolatile>
 inline kSize Object::GetField(MemberOffset field_offset) {
   SWAP_PREAMBLE_TEMPLATE(GetField, Object, GATHER_TEMPLATE_ARGS(kSize, kIsVolatile), field_offset)
   if (!GetIgnoreReadFlag()) {
-      IncrReadCounter();
+      SetReadBit();
   }
   const uint8_t* raw_addr = reinterpret_cast<const uint8_t*>(this) + field_offset.Int32Value();
   const kSize* addr = reinterpret_cast<const kSize*>(raw_addr);
@@ -883,7 +883,7 @@ template<class T, VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrier
 inline T* Object::GetFieldObject(MemberOffset field_offset) {
   SWAP_PREAMBLE_TEMPLATE(GetFieldObject, Object, GATHER_TEMPLATE_ARGS(T, kVerifyFlags, kReadBarrierOption, kIsVolatile), field_offset)
   if (!GetIgnoreReadFlag()) {
-      IncrReadCounter();
+      SetReadBit();
   }
   if (kVerifyFlags & kVerifyThis) {
     VerifyObject(this);
@@ -951,7 +951,7 @@ inline void Object::SetFieldObjectWithoutWriteBarrier(MemberOffset field_offset,
   } else {
     objref_addr->Assign(new_value);
   }
-  IncrWriteCounter();
+  SetWriteBit();
   SetDirtyBit();
 }
 
@@ -1285,28 +1285,24 @@ inline void Object::ClearIgnoreReadFlag() {
   ClearBitsAtomic8(x_flags_, 1, 1, std::memory_order_relaxed);
 }
 
-inline uint8_t Object::GetWriteCounter() {
-  return x_write_counter_;
+inline bool Object::GetWriteBit() {
+  return (bool)GetBitsAtomic8(x_flags_, 4, 1, std::memory_order_acquire);
 }
-inline void Object::IncrWriteCounter() {
-  if (x_write_counter_ < 255) {
-      x_write_counter_ += 1;
-  }
+inline void Object::SetWriteBit() {
+  SetBitsAtomic8(x_flags_, 4, 1, std::memory_order_acq_rel);
 }
-inline void Object::ClearWriteCounter() {
-  x_write_counter_ = 0;
+inline void Object::ClearWriteBit() {
+  ClearBitsAtomic8(x_flags_, 4, 1, std::memory_order_acq_rel);
 }
 
-inline uint8_t Object::GetReadCounter() {
-  return x_read_counter_;
+inline bool Object::GetReadBit() {
+  return (bool)GetBitsAtomic8(x_flags_, 3, 1, std::memory_order_acquire);
 }
-inline void Object::IncrReadCounter() {
-  if (x_read_counter_ < 255) {
-    x_read_counter_ += 1;
-  }
+inline void Object::SetReadBit() {
+  SetBitsAtomic8(x_flags_, 3, 1, std::memory_order_acq_rel);
 }
-inline void Object::ClearReadCounter() {
-  x_read_counter_ = 0;
+inline void Object::ClearReadBit() {
+  ClearBitsAtomic8(x_flags_, 3, 1, std::memory_order_acq_rel);
 }
 
 inline uint8_t Object::GetWriteShiftRegister() {

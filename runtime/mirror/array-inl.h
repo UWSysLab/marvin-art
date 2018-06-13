@@ -250,7 +250,7 @@ inline void PrimitiveArray<T>::SetWithoutChecks(int32_t i, T value) {
   }
   DCHECK(CheckIsValidIndex<kVerifyFlags>(i));
   GetData()[i] = value;
-  IncrWriteCounter();
+  SetWriteBit();
   SetDirtyBit();
 }
 // Backward copy where elements are of aligned appropriately for T. Count is in T sized units.
@@ -336,7 +336,7 @@ inline void PrimitiveArray<T>::Memmove(int32_t dst_pos, PrimitiveArray<T>* src, 
       }
     }
   }
-  IncrWriteCounter();
+  SetWriteBit();
   SetDirtyBit();
 }
 
@@ -376,7 +376,7 @@ inline void PrimitiveArray<T>::Memcpy(int32_t dst_pos, PrimitiveArray<T>* src, i
     const uint64_t* s = reinterpret_cast<const uint64_t*>(src_raw);
     ArrayForwardCopy<uint64_t>(d, s, count);
   }
-  IncrWriteCounter();
+  SetWriteBit();
   SetDirtyBit();
 }
 

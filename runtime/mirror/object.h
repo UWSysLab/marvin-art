@@ -155,24 +155,18 @@ class MANAGED LOCKABLE Object {
    * Current layout of added header bytes:
    *
    * x_flags_:
-   * 7|6543|2|1|0
-   * s|----|n|f|d
+   * 7|65|4|3|2|1|0
+   * s|--|w|r|n|i|d
    *
    * x_shift_regs_:
    * 7654|3210
    * rsr |wsr
    *
-   * x_read_counter_:
-   * 76543210
-   * read counter
-   *
-   * x_write_counter_:
-   * 76543210
-   * write counter
-   *
    * s: stub flag
+   * w: write bit
+   * r: read bit
    * n: no-swap flag
-   * f: ignore read flag
+   * i: ignore read flag
    * d: dirty bit
    * rsr: read shift register (for Clock working set estimation)
    * wsr: write shift register (for Clock)
@@ -182,13 +176,13 @@ class MANAGED LOCKABLE Object {
   void SetIgnoreReadFlag();
   void ClearIgnoreReadFlag();
 
-  uint8_t GetWriteCounter();
-  void IncrWriteCounter();
-  void ClearWriteCounter();
+  bool GetWriteBit();
+  void SetWriteBit();
+  void ClearWriteBit();
 
-  uint8_t GetReadCounter();
-  void IncrReadCounter();
-  void ClearReadCounter();
+  bool GetReadBit();
+  void SetReadBit();
+  void ClearReadBit();
 
   uint8_t GetWriteShiftRegister();
   void UpdateWriteShiftRegister(bool written);
@@ -723,12 +717,12 @@ class MANAGED LOCKABLE Object {
   uint32_t monitor_;
 
   // Names use 'x' prefix for the same reason that the Brooks variables defined
-  // below do. See the comment at line 118 in this file for info about the
+  // below do. See the comment at line 154 in this file for info about the
   // layout of these variables.
   std::atomic<uint8_t> x_flags_;
   uint8_t x_shift_regs_;
-  uint8_t x_read_counter_;
-  uint8_t x_write_counter_;
+  uint8_t x_padding_b_;
+  uint8_t x_padding_c_;
   uint32_t x_padding_;
 
 #ifdef USE_BROOKS_READ_BARRIER

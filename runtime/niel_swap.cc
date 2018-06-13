@@ -1225,11 +1225,8 @@ void CheckAndUpdate(gc::collector::GarbageCollector * gc, mirror::Object * objec
     bool isSwappableType = objectIsSwappableType(object);
     object->ClearIgnoreReadFlag();
 
-    uint8_t readCounterVal = object->GetReadCounter();
-    uint8_t writeCounterVal = object->GetWriteCounter();
-
-    bool wasRead = (readCounterVal > 0);
-    bool wasWritten = (writeCounterVal > 0);
+    bool wasRead = object->GetReadBit();
+    bool wasWritten = object->GetWriteBit();
 
     //uint8_t rsrVal = object->GetReadShiftRegister();
     uint8_t wsrVal = object->GetWriteShiftRegister();
@@ -1271,10 +1268,10 @@ void CheckAndUpdate(gc::collector::GarbageCollector * gc, mirror::Object * objec
     }
 
     if (wasRead) {
-        object->ClearReadCounter();
+        object->ClearReadBit();
     }
     if (wasWritten) {
-        object->ClearWriteCounter();
+        object->ClearWriteBit();
     }
 
     object->UpdateReadShiftRegister(wasRead);
