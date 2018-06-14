@@ -110,6 +110,7 @@ class ReclamationTable {
     static ReclamationTable CreateTable(int numEntries);
     TableEntry * CreateEntry();
     void FreeEntry(TableEntry * entry);
+    bool IsValid();
     void DebugPrint();
 
   private:

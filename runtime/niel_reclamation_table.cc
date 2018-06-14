@@ -18,8 +18,12 @@ ReclamationTable ReclamationTable::CreateTable(int numEntries) {
                               MAP_SHARED | MAP_ANONYMOUS,
                               -1,
                               0);
-    ReclamationTable table(baseAddress, numEntries);
-    return table;
+    if (baseAddress == MAP_FAILED) {
+        LOG(ERROR) << "NIELERROR mmap failed during reclamation table creation: "
+                   << strerror(errno);
+        return ReclamationTable(nullptr, 0);
+    }
+    return ReclamationTable(baseAddress, numEntries);
 }
 
 TableEntry * ReclamationTable::CreateEntry() {
@@ -36,6 +40,10 @@ TableEntry * ReclamationTable::CreateEntry() {
 
 void ReclamationTable::FreeEntry(TableEntry * entry) {
     entry->ClearOccupiedBit();
+}
+
+bool ReclamationTable::IsValid() {
+    return base_address_ != nullptr;
 }
 
 void ReclamationTable::DebugPrint() {
