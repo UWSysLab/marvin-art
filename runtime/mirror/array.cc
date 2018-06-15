@@ -118,17 +118,17 @@ Array* Array::CreateMultiArray(Thread* self, Handle<Class> element_class,
 }
 
 void Array::ThrowArrayIndexOutOfBoundsException(int32_t index) {
-  SWAP_PREAMBLE(ThrowArrayIndexOutOfBoundsException, Array, index)
+  SWAP_PREAMBLE_VOID(ThrowArrayIndexOutOfBoundsException, Array, index)
   art::ThrowArrayIndexOutOfBoundsException(index, GetLength());
 }
 
 void Array::ThrowArrayStoreException(Object* object) {
-  SWAP_PREAMBLE(ThrowArrayStoreException, Array, object)
+  SWAP_PREAMBLE_VOID(ThrowArrayStoreException, Array, object)
   art::ThrowArrayStoreException(object->GetClass(), this->GetClass());
 }
 
 Array* Array::CopyOf(Thread* self, int32_t new_length) {
-  SWAP_PREAMBLE(CopyOf, Array, self, new_length)
+  SWAP_PREAMBLE(CopyOf, Array, Array*, self, new_length)
   CHECK(GetClass()->GetComponentType()->IsPrimitive()) << "Will miss write barriers";
   DCHECK_GE(new_length, 0);
   // We may get copied by a compacting GC.

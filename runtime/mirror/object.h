@@ -26,7 +26,27 @@
 #include "niel_stub.h"
 #include "niel_swap.h"
 
-#define SWAP_PREAMBLE(func_name, type_name, ...) \
+#define SWAP_PREAMBLE(func_name, type_name, return_type, ...) \
+if (UNLIKELY(GetStubFlag())) { \
+  niel::swap::Stub * stub = (niel::swap::Stub *)this; \
+  if (UNLIKELY(stub->GetObjectAddress() == nullptr)) { \
+    niel::swap::SwapInOnDemand(stub); \
+  } \
+  return_type result = ((type_name *)(stub->GetObjectAddress()))->func_name(__VA_ARGS__); \
+  return result; \
+}
+
+#define SWAP_PREAMBLE_TEMPLATE(func_name, type_name, return_type, template_args, ...) \
+if (UNLIKELY(GetStubFlag())) { \
+  niel::swap::Stub * stub = (niel::swap::Stub *)this; \
+  if (UNLIKELY(stub->GetObjectAddress() == nullptr)) { \
+    niel::swap::SwapInOnDemand(stub); \
+  } \
+  return_type result = ((type_name *)(stub->GetObjectAddress()))->func_name<template_args>(__VA_ARGS__); \
+  return result; \
+}
+
+#define SWAP_PREAMBLE_VOID(func_name, type_name, ...) \
 if (UNLIKELY(GetStubFlag())) { \
   niel::swap::Stub * stub = (niel::swap::Stub *)this; \
   if (UNLIKELY(stub->GetObjectAddress() == nullptr)) { \
@@ -35,7 +55,7 @@ if (UNLIKELY(GetStubFlag())) { \
   return ((type_name *)(stub->GetObjectAddress()))->func_name(__VA_ARGS__); \
 }
 
-#define SWAP_PREAMBLE_TEMPLATE(func_name, type_name, template_args, ...) \
+#define SWAP_PREAMBLE_TEMPLATE_VOID(func_name, type_name, template_args, ...) \
 if (UNLIKELY(GetStubFlag())) { \
   niel::swap::Stub * stub = (niel::swap::Stub *)this; \
   if (UNLIKELY(stub->GetObjectAddress() == nullptr)) { \
@@ -655,7 +675,7 @@ class MANAGED LOCKABLE Object {
   template<class T, VerifyObjectFlags kVerifyFlags = kDefaultVerifyFlags, bool kIsVolatile = false>
   ALWAYS_INLINE T GetFieldPtrWithSize(MemberOffset field_offset, size_t pointer_size)
       SHARED_REQUIRES(Locks::mutator_lock_) {
-    SWAP_PREAMBLE_TEMPLATE(GetFieldPtrWithSize, Object, GATHER_TEMPLATE_ARGS(T, kVerifyFlags, kIsVolatile), field_offset, pointer_size)
+    SWAP_PREAMBLE_TEMPLATE(GetFieldPtrWithSize, Object, T, GATHER_TEMPLATE_ARGS(T, kVerifyFlags, kIsVolatile), field_offset, pointer_size)
     DCHECK(pointer_size == 4 || pointer_size == 8) << pointer_size;
     if (pointer_size == 4) {
       return reinterpret_cast<T>(GetField32<kVerifyFlags, kIsVolatile>(field_offset));

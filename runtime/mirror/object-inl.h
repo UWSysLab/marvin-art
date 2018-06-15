@@ -107,47 +107,47 @@ inline bool Object::CasLockWordWeakRelease(LockWord old_val, LockWord new_val) {
 }
 
 inline uint32_t Object::GetLockOwnerThreadId() {
-  SWAP_PREAMBLE(GetLockOwnerThreadId, Object, )
+  SWAP_PREAMBLE(GetLockOwnerThreadId, Object, uint32_t, )
   return Monitor::GetLockOwnerThreadId(this);
 }
 
 inline mirror::Object* Object::MonitorEnter(Thread* self) {
-  SWAP_PREAMBLE(MonitorEnter, Object, self)
+  SWAP_PREAMBLE(MonitorEnter, Object, mirror::Object*, self)
   return Monitor::MonitorEnter(self, this, /*trylock*/false);
 }
 
 inline mirror::Object* Object::MonitorTryEnter(Thread* self) {
-  SWAP_PREAMBLE(MonitorTryEnter, Object, self)
+  SWAP_PREAMBLE(MonitorTryEnter, Object, mirror::Object*, self)
   return Monitor::MonitorEnter(self, this, /*trylock*/true);
 }
 
 inline bool Object::MonitorExit(Thread* self) {
-  SWAP_PREAMBLE(MonitorExit, Object, self)
+  SWAP_PREAMBLE(MonitorExit, Object, bool, self)
   return Monitor::MonitorExit(self, this);
 }
 
 inline void Object::Notify(Thread* self) {
-  SWAP_PREAMBLE(Notify, Object, self)
+  SWAP_PREAMBLE_VOID(Notify, Object, self)
   Monitor::Notify(self, this);
 }
 
 inline void Object::NotifyAll(Thread* self) {
-  SWAP_PREAMBLE(NotifyAll, Object, self)
+  SWAP_PREAMBLE_VOID(NotifyAll, Object, self)
   Monitor::NotifyAll(self, this);
 }
 
 inline void Object::Wait(Thread* self) {
-  SWAP_PREAMBLE(Wait, Object, self)
+  SWAP_PREAMBLE_VOID(Wait, Object, self)
   Monitor::Wait(self, this, 0, 0, true, kWaiting);
 }
 
 inline void Object::Wait(Thread* self, int64_t ms, int32_t ns) {
-  SWAP_PREAMBLE(Wait, Object, self, ms, ns)
+  SWAP_PREAMBLE_VOID(Wait, Object, self, ms, ns)
   Monitor::Wait(self, this, ms, ns, true, kTimedWaiting);
 }
 
 inline Object* Object::GetReadBarrierPointer() {
-  SWAP_PREAMBLE(GetReadBarrierPointer, Object, )
+  SWAP_PREAMBLE(GetReadBarrierPointer, Object, Object*, )
 #ifdef USE_BAKER_READ_BARRIER
   DCHECK(kUseBakerReadBarrier);
   return reinterpret_cast<Object*>(GetLockWord(false).ReadBarrierState());
@@ -183,7 +183,7 @@ inline void Object::SetReadBarrierPointer(Object* rb_ptr) {
 
 template<bool kCasRelease>
 inline bool Object::AtomicSetReadBarrierPointer(Object* expected_rb_ptr, Object* rb_ptr) {
-  SWAP_PREAMBLE_TEMPLATE(AtomicSetReadBarrierPointer, Object, GATHER_TEMPLATE_ARGS(kCasRelease), expected_rb_ptr, rb_ptr)
+  SWAP_PREAMBLE_TEMPLATE(AtomicSetReadBarrierPointer, Object, bool, GATHER_TEMPLATE_ARGS(kCasRelease), expected_rb_ptr, rb_ptr)
 #ifdef USE_BAKER_READ_BARRIER
   DCHECK(kUseBakerReadBarrier);
   DCHECK_EQ(reinterpret_cast<uint64_t>(expected_rb_ptr) >> 32, 0U);
@@ -232,7 +232,7 @@ inline bool Object::AtomicSetReadBarrierPointer(Object* expected_rb_ptr, Object*
 }
 
 inline void Object::AssertReadBarrierPointer() const {
-  SWAP_PREAMBLE(AssertReadBarrierPointer, Object, )
+  SWAP_PREAMBLE_VOID(AssertReadBarrierPointer, Object, )
   if (kUseBakerReadBarrier) {
     Object* obj = const_cast<Object*>(this);
     DCHECK(obj->GetReadBarrierPointer() == nullptr)
@@ -271,7 +271,7 @@ inline bool Object::IsClass() {
 
 template<VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrierOption>
 inline Class* Object::AsClass() {
-  SWAP_PREAMBLE_TEMPLATE(AsClass, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption), )
+  SWAP_PREAMBLE_TEMPLATE(AsClass, Object, Class*, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption), )
   DCHECK((IsClass<kVerifyFlags, kReadBarrierOption>()));
   return down_cast<Class*>(this);
 }
@@ -286,7 +286,7 @@ inline bool Object::IsObjectArray() {
 
 template<class T, VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrierOption>
 inline ObjectArray<T>* Object::AsObjectArray() {
-  SWAP_PREAMBLE_TEMPLATE(AsObjectArray, Object, GATHER_TEMPLATE_ARGS(T, kVerifyFlags, kReadBarrierOption), )
+  SWAP_PREAMBLE_TEMPLATE(AsObjectArray, Object, ObjectArray<T>*, GATHER_TEMPLATE_ARGS(T, kVerifyFlags, kReadBarrierOption), )
   DCHECK((IsObjectArray<kVerifyFlags, kReadBarrierOption>()));
   return down_cast<ObjectArray<T>*>(this);
 }
@@ -304,21 +304,21 @@ inline bool Object::IsReferenceInstance() {
 
 template<VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrierOption>
 inline Reference* Object::AsReference() {
-  SWAP_PREAMBLE_TEMPLATE(AsReference, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption), )
+  SWAP_PREAMBLE_TEMPLATE(AsReference, Object, Reference*, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption), )
   DCHECK((IsReferenceInstance<kVerifyFlags, kReadBarrierOption>()));
   return down_cast<Reference*>(this);
 }
 
 template<VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrierOption>
 inline Array* Object::AsArray() {
-  SWAP_PREAMBLE_TEMPLATE(AsArray, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption), )
+  SWAP_PREAMBLE_TEMPLATE(AsArray, Object, Array*, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption), )
   DCHECK((IsArrayInstance<kVerifyFlags, kReadBarrierOption>()));
   return down_cast<Array*>(this);
 }
 
 template<VerifyObjectFlags kVerifyFlags>
 inline BooleanArray* Object::AsBooleanArray() {
-  SWAP_PREAMBLE_TEMPLATE(AsBooleanArray, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags), )
+  SWAP_PREAMBLE_TEMPLATE(AsBooleanArray, Object, BooleanArray*, GATHER_TEMPLATE_ARGS(kVerifyFlags), )
   constexpr auto kNewFlags = static_cast<VerifyObjectFlags>(kVerifyFlags & ~kVerifyThis);
   DCHECK(GetClass<kVerifyFlags>()->IsArrayClass());
   DCHECK(GetClass<kNewFlags>()->GetComponentType()->IsPrimitiveBoolean());
@@ -327,7 +327,7 @@ inline BooleanArray* Object::AsBooleanArray() {
 
 template<VerifyObjectFlags kVerifyFlags>
 inline ByteArray* Object::AsByteArray() {
-  SWAP_PREAMBLE_TEMPLATE(AsByteArray, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags), )
+  SWAP_PREAMBLE_TEMPLATE(AsByteArray, Object, ByteArray*, GATHER_TEMPLATE_ARGS(kVerifyFlags), )
   constexpr auto kNewFlags = static_cast<VerifyObjectFlags>(kVerifyFlags & ~kVerifyThis);
   DCHECK(GetClass<kVerifyFlags>()->IsArrayClass());
   DCHECK(GetClass<kNewFlags>()->template GetComponentType<kNewFlags>()->IsPrimitiveByte());
@@ -336,7 +336,7 @@ inline ByteArray* Object::AsByteArray() {
 
 template<VerifyObjectFlags kVerifyFlags>
 inline ByteArray* Object::AsByteSizedArray() {
-  SWAP_PREAMBLE_TEMPLATE(AsByteSizedArray, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags), )
+  SWAP_PREAMBLE_TEMPLATE(AsByteSizedArray, Object, ByteArray*, GATHER_TEMPLATE_ARGS(kVerifyFlags), )
   constexpr auto kNewFlags = static_cast<VerifyObjectFlags>(kVerifyFlags & ~kVerifyThis);
   DCHECK(GetClass<kVerifyFlags>()->IsArrayClass());
   DCHECK(GetClass<kNewFlags>()->template GetComponentType<kNewFlags>()->IsPrimitiveByte() ||
@@ -346,7 +346,7 @@ inline ByteArray* Object::AsByteSizedArray() {
 
 template<VerifyObjectFlags kVerifyFlags>
 inline CharArray* Object::AsCharArray() {
-  SWAP_PREAMBLE_TEMPLATE(AsCharArray, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags), )
+  SWAP_PREAMBLE_TEMPLATE(AsCharArray, Object, CharArray*, GATHER_TEMPLATE_ARGS(kVerifyFlags), )
   constexpr auto kNewFlags = static_cast<VerifyObjectFlags>(kVerifyFlags & ~kVerifyThis);
   DCHECK(GetClass<kVerifyFlags>()->IsArrayClass());
   DCHECK(GetClass<kNewFlags>()->template GetComponentType<kNewFlags>()->IsPrimitiveChar());
@@ -355,7 +355,7 @@ inline CharArray* Object::AsCharArray() {
 
 template<VerifyObjectFlags kVerifyFlags>
 inline ShortArray* Object::AsShortArray() {
-  SWAP_PREAMBLE_TEMPLATE(AsShortArray, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags), )
+  SWAP_PREAMBLE_TEMPLATE(AsShortArray, Object, ShortArray*, GATHER_TEMPLATE_ARGS(kVerifyFlags), )
   constexpr auto kNewFlags = static_cast<VerifyObjectFlags>(kVerifyFlags & ~kVerifyThis);
   DCHECK(GetClass<kVerifyFlags>()->IsArrayClass());
   DCHECK(GetClass<kNewFlags>()->template GetComponentType<kNewFlags>()->IsPrimitiveShort());
@@ -364,7 +364,7 @@ inline ShortArray* Object::AsShortArray() {
 
 template<VerifyObjectFlags kVerifyFlags>
 inline ShortArray* Object::AsShortSizedArray() {
-  SWAP_PREAMBLE_TEMPLATE(AsShortSizedArray, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags), )
+  SWAP_PREAMBLE_TEMPLATE(AsShortSizedArray, Object, ShortArray*, GATHER_TEMPLATE_ARGS(kVerifyFlags), )
   constexpr auto kNewFlags = static_cast<VerifyObjectFlags>(kVerifyFlags & ~kVerifyThis);
   DCHECK(GetClass<kVerifyFlags>()->IsArrayClass());
   DCHECK(GetClass<kNewFlags>()->template GetComponentType<kNewFlags>()->IsPrimitiveShort() ||
@@ -382,7 +382,7 @@ inline bool Object::IsIntArray() {
 
 template<VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrierOption>
 inline IntArray* Object::AsIntArray() {
-  SWAP_PREAMBLE_TEMPLATE(AsIntArray, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption), )
+  SWAP_PREAMBLE_TEMPLATE(AsIntArray, Object, IntArray*, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption), )
   DCHECK((IsIntArray<kVerifyFlags, kReadBarrierOption>()));
   return down_cast<IntArray*>(this);
 }
@@ -397,7 +397,7 @@ inline bool Object::IsLongArray() {
 
 template<VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrierOption>
 inline LongArray* Object::AsLongArray() {
-  SWAP_PREAMBLE_TEMPLATE(AsLongArray, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption), )
+  SWAP_PREAMBLE_TEMPLATE(AsLongArray, Object, LongArray*, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption), )
   DCHECK((IsLongArray<kVerifyFlags, kReadBarrierOption>()));
   return down_cast<LongArray*>(this);
 }
@@ -411,7 +411,7 @@ inline bool Object::IsFloatArray() {
 
 template<VerifyObjectFlags kVerifyFlags>
 inline FloatArray* Object::AsFloatArray() {
-  SWAP_PREAMBLE_TEMPLATE(AsFloatArray, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags), )
+  SWAP_PREAMBLE_TEMPLATE(AsFloatArray, Object, FloatArray*, GATHER_TEMPLATE_ARGS(kVerifyFlags), )
   DCHECK(IsFloatArray<kVerifyFlags>());
   constexpr auto kNewFlags = static_cast<VerifyObjectFlags>(kVerifyFlags & ~kVerifyThis);
   DCHECK(GetClass<kVerifyFlags>()->IsArrayClass());
@@ -428,7 +428,7 @@ inline bool Object::IsDoubleArray() {
 
 template<VerifyObjectFlags kVerifyFlags>
 inline DoubleArray* Object::AsDoubleArray() {
-  SWAP_PREAMBLE_TEMPLATE(AsDoubleArray, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags), )
+  SWAP_PREAMBLE_TEMPLATE(AsDoubleArray, Object, DoubleArray*, GATHER_TEMPLATE_ARGS(kVerifyFlags), )
   DCHECK(IsDoubleArray<kVerifyFlags>());
   constexpr auto kNewFlags = static_cast<VerifyObjectFlags>(kVerifyFlags & ~kVerifyThis);
   DCHECK(GetClass<kVerifyFlags>()->IsArrayClass());
@@ -443,14 +443,14 @@ inline bool Object::IsString() {
 
 template<VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrierOption>
 inline String* Object::AsString() {
-  SWAP_PREAMBLE_TEMPLATE(AsString, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption), )
+  SWAP_PREAMBLE_TEMPLATE(AsString, Object, String*, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption), )
   DCHECK((IsString<kVerifyFlags, kReadBarrierOption>()));
   return down_cast<String*>(this);
 }
 
 template<VerifyObjectFlags kVerifyFlags>
 inline Throwable* Object::AsThrowable() {
-  SWAP_PREAMBLE_TEMPLATE(AsThrowable, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags), )
+  SWAP_PREAMBLE_TEMPLATE(AsThrowable, Object, Throwable*, GATHER_TEMPLATE_ARGS(kVerifyFlags), )
   DCHECK(GetClass<kVerifyFlags>()->IsThrowableClass());
   return down_cast<Throwable*>(this);
 }
@@ -472,7 +472,7 @@ inline bool Object::IsFinalizerReferenceInstance() {
 
 template<VerifyObjectFlags kVerifyFlags>
 inline FinalizerReference* Object::AsFinalizerReference() {
-  SWAP_PREAMBLE_TEMPLATE(AsFinalizerReference, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags), )
+  SWAP_PREAMBLE_TEMPLATE(AsFinalizerReference, Object, FinalizerReference*, GATHER_TEMPLATE_ARGS(kVerifyFlags), )
   DCHECK(IsFinalizerReferenceInstance<kVerifyFlags>());
   return down_cast<FinalizerReference*>(this);
 }
@@ -484,7 +484,7 @@ inline bool Object::IsPhantomReferenceInstance() {
 
 template<VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrierOption>
 inline size_t Object::SizeOf() {
-  SWAP_PREAMBLE_TEMPLATE(SizeOf, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption), )
+  SWAP_PREAMBLE_TEMPLATE(SizeOf, Object, size_t, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption), )
   size_t result;
   constexpr auto kNewFlags = static_cast<VerifyObjectFlags>(kVerifyFlags & ~kVerifyThis);
   if (IsArrayInstance<kVerifyFlags, kReadBarrierOption>()) {
@@ -507,7 +507,7 @@ inline size_t Object::SizeOf() {
 
 template<VerifyObjectFlags kVerifyFlags, bool kIsVolatile>
 inline uint8_t Object::GetFieldBoolean(MemberOffset field_offset) {
-  SWAP_PREAMBLE_TEMPLATE(GetFieldBoolean, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags, kIsVolatile), field_offset)
+  SWAP_PREAMBLE_TEMPLATE(GetFieldBoolean, Object, uint8_t, GATHER_TEMPLATE_ARGS(kVerifyFlags, kIsVolatile), field_offset)
   if (kVerifyFlags & kVerifyThis) {
     VerifyObject(this);
   }
@@ -516,7 +516,7 @@ inline uint8_t Object::GetFieldBoolean(MemberOffset field_offset) {
 
 template<VerifyObjectFlags kVerifyFlags, bool kIsVolatile>
 inline int8_t Object::GetFieldByte(MemberOffset field_offset) {
-  SWAP_PREAMBLE_TEMPLATE(GetFieldByte, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags, kIsVolatile), field_offset)
+  SWAP_PREAMBLE_TEMPLATE(GetFieldByte, Object, int8_t, GATHER_TEMPLATE_ARGS(kVerifyFlags, kIsVolatile), field_offset)
   if (kVerifyFlags & kVerifyThis) {
     VerifyObject(this);
   }
@@ -537,7 +537,7 @@ template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVer
     bool kIsVolatile>
 inline void Object::SetFieldBoolean(MemberOffset field_offset, uint8_t new_value)
     SHARED_REQUIRES(Locks::mutator_lock_) {
-  SWAP_PREAMBLE_TEMPLATE(SetFieldBoolean, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags, kIsVolatile), field_offset, new_value)
+  SWAP_PREAMBLE_TEMPLATE_VOID(SetFieldBoolean, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags, kIsVolatile), field_offset, new_value)
   if (kCheckTransaction) {
     DCHECK_EQ(kTransactionActive, Runtime::Current()->IsActiveTransaction());
   }
@@ -556,7 +556,7 @@ template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVer
     bool kIsVolatile>
 inline void Object::SetFieldByte(MemberOffset field_offset, int8_t new_value)
     SHARED_REQUIRES(Locks::mutator_lock_) {
-  SWAP_PREAMBLE_TEMPLATE(SetFieldByte, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags, kIsVolatile), field_offset, new_value)
+  SWAP_PREAMBLE_TEMPLATE_VOID(SetFieldByte, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags, kIsVolatile), field_offset, new_value)
   if (kCheckTransaction) {
     DCHECK_EQ(kTransactionActive, Runtime::Current()->IsActiveTransaction());
   }
@@ -585,7 +585,7 @@ inline void Object::SetFieldByteVolatile(MemberOffset field_offset, int8_t new_v
 
 template<VerifyObjectFlags kVerifyFlags, bool kIsVolatile>
 inline uint16_t Object::GetFieldChar(MemberOffset field_offset) {
-  SWAP_PREAMBLE_TEMPLATE(GetFieldChar, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags, kIsVolatile), field_offset)
+  SWAP_PREAMBLE_TEMPLATE(GetFieldChar, Object, uint16_t, GATHER_TEMPLATE_ARGS(kVerifyFlags, kIsVolatile), field_offset)
   if (kVerifyFlags & kVerifyThis) {
     VerifyObject(this);
   }
@@ -594,7 +594,7 @@ inline uint16_t Object::GetFieldChar(MemberOffset field_offset) {
 
 template<VerifyObjectFlags kVerifyFlags, bool kIsVolatile>
 inline int16_t Object::GetFieldShort(MemberOffset field_offset) {
-  SWAP_PREAMBLE_TEMPLATE(GetFieldShort, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags, kIsVolatile), field_offset)
+  SWAP_PREAMBLE_TEMPLATE(GetFieldShort, Object, int16_t, GATHER_TEMPLATE_ARGS(kVerifyFlags, kIsVolatile), field_offset)
   if (kVerifyFlags & kVerifyThis) {
     VerifyObject(this);
   }
@@ -614,7 +614,7 @@ inline int16_t Object::GetFieldShortVolatile(MemberOffset field_offset) {
 template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVerifyFlags,
     bool kIsVolatile>
 inline void Object::SetFieldChar(MemberOffset field_offset, uint16_t new_value) {
-  SWAP_PREAMBLE_TEMPLATE(SetFieldChar, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags, kIsVolatile), field_offset, new_value)
+  SWAP_PREAMBLE_TEMPLATE_VOID(SetFieldChar, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags, kIsVolatile), field_offset, new_value)
   if (kCheckTransaction) {
     DCHECK_EQ(kTransactionActive, Runtime::Current()->IsActiveTransaction());
   }
@@ -632,7 +632,7 @@ inline void Object::SetFieldChar(MemberOffset field_offset, uint16_t new_value) 
 template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVerifyFlags,
     bool kIsVolatile>
 inline void Object::SetFieldShort(MemberOffset field_offset, int16_t new_value) {
-  SWAP_PREAMBLE_TEMPLATE(SetFieldShort, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags, kIsVolatile), field_offset, new_value)
+  SWAP_PREAMBLE_TEMPLATE_VOID(SetFieldShort, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags, kIsVolatile), field_offset, new_value)
   if (kCheckTransaction) {
     DCHECK_EQ(kTransactionActive, Runtime::Current()->IsActiveTransaction());
   }
@@ -661,7 +661,7 @@ inline void Object::SetFieldShortVolatile(MemberOffset field_offset, int16_t new
 
 template<VerifyObjectFlags kVerifyFlags, bool kIsVolatile>
 inline int32_t Object::GetField32(MemberOffset field_offset) {
-  SWAP_PREAMBLE_TEMPLATE(GetField32, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags, kIsVolatile), field_offset)
+  SWAP_PREAMBLE_TEMPLATE(GetField32, Object, int32_t, GATHER_TEMPLATE_ARGS(kVerifyFlags, kIsVolatile), field_offset)
   if (kVerifyFlags & kVerifyThis) {
     VerifyObject(this);
   }
@@ -676,7 +676,7 @@ inline int32_t Object::GetField32Volatile(MemberOffset field_offset) {
 template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVerifyFlags,
     bool kIsVolatile>
 inline void Object::SetField32(MemberOffset field_offset, int32_t new_value) {
-  SWAP_PREAMBLE_TEMPLATE(SetField32, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags, kIsVolatile), field_offset, new_value)
+  SWAP_PREAMBLE_TEMPLATE_VOID(SetField32, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags, kIsVolatile), field_offset, new_value)
   if (kCheckTransaction) {
     DCHECK_EQ(kTransactionActive, Runtime::Current()->IsActiveTransaction());
   }
@@ -701,7 +701,7 @@ inline void Object::SetField32Volatile(MemberOffset field_offset, int32_t new_va
 template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVerifyFlags>
 inline bool Object::CasFieldWeakSequentiallyConsistent32(MemberOffset field_offset,
                                                          int32_t old_value, int32_t new_value) {
-  SWAP_PREAMBLE_TEMPLATE(CasFieldWeakSequentiallyConsistent32, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, old_value, new_value)
+  SWAP_PREAMBLE_TEMPLATE(CasFieldWeakSequentiallyConsistent32, Object, bool, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, old_value, new_value)
   if (kCheckTransaction) {
     DCHECK_EQ(kTransactionActive, Runtime::Current()->IsActiveTransaction());
   }
@@ -720,7 +720,7 @@ inline bool Object::CasFieldWeakSequentiallyConsistent32(MemberOffset field_offs
 template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVerifyFlags>
 inline bool Object::CasFieldWeakRelaxed32(MemberOffset field_offset,
                                           int32_t old_value, int32_t new_value) {
-  SWAP_PREAMBLE_TEMPLATE(CasFieldWeakRelaxed32, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, old_value, new_value)
+  SWAP_PREAMBLE_TEMPLATE(CasFieldWeakRelaxed32, Object, bool, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, old_value, new_value)
   if (kCheckTransaction) {
     DCHECK_EQ(kTransactionActive, Runtime::Current()->IsActiveTransaction());
   }
@@ -739,7 +739,7 @@ inline bool Object::CasFieldWeakRelaxed32(MemberOffset field_offset,
 template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVerifyFlags>
 inline bool Object::CasFieldWeakRelease32(MemberOffset field_offset,
                                           int32_t old_value, int32_t new_value) {
-  SWAP_PREAMBLE_TEMPLATE(CasFieldWeakRelease32, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, old_value, new_value)
+  SWAP_PREAMBLE_TEMPLATE(CasFieldWeakRelease32, Object, bool, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, old_value, new_value)
   if (kCheckTransaction) {
     DCHECK_EQ(kTransactionActive, Runtime::Current()->IsActiveTransaction());
   }
@@ -758,7 +758,7 @@ inline bool Object::CasFieldWeakRelease32(MemberOffset field_offset,
 template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVerifyFlags>
 inline bool Object::CasFieldStrongSequentiallyConsistent32(MemberOffset field_offset,
                                                            int32_t old_value, int32_t new_value) {
-  SWAP_PREAMBLE_TEMPLATE(CasFieldStrongSequentiallyConsistent32, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, old_value, new_value)
+  SWAP_PREAMBLE_TEMPLATE(CasFieldStrongSequentiallyConsistent32, Object, bool, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, old_value, new_value)
   if (kCheckTransaction) {
     DCHECK_EQ(kTransactionActive, Runtime::Current()->IsActiveTransaction());
   }
@@ -776,7 +776,7 @@ inline bool Object::CasFieldStrongSequentiallyConsistent32(MemberOffset field_of
 
 template<VerifyObjectFlags kVerifyFlags, bool kIsVolatile>
 inline int64_t Object::GetField64(MemberOffset field_offset) {
-  SWAP_PREAMBLE_TEMPLATE(GetField64, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags, kIsVolatile), field_offset)
+  SWAP_PREAMBLE_TEMPLATE(GetField64, Object, int64_t, GATHER_TEMPLATE_ARGS(kVerifyFlags, kIsVolatile), field_offset)
   if (kVerifyFlags & kVerifyThis) {
     VerifyObject(this);
   }
@@ -791,7 +791,7 @@ inline int64_t Object::GetField64Volatile(MemberOffset field_offset) {
 template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVerifyFlags,
     bool kIsVolatile>
 inline void Object::SetField64(MemberOffset field_offset, int64_t new_value) {
-  SWAP_PREAMBLE_TEMPLATE(SetField64, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags, kIsVolatile), field_offset, new_value)
+  SWAP_PREAMBLE_TEMPLATE_VOID(SetField64, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags, kIsVolatile), field_offset, new_value)
   if (kCheckTransaction) {
     DCHECK_EQ(kTransactionActive, Runtime::Current()->IsActiveTransaction());
   }
@@ -808,14 +808,14 @@ inline void Object::SetField64(MemberOffset field_offset, int64_t new_value) {
 
 template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVerifyFlags>
 inline void Object::SetField64Volatile(MemberOffset field_offset, int64_t new_value) {
-  SWAP_PREAMBLE_TEMPLATE(SetField64Volatile, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, new_value)
+  SWAP_PREAMBLE_TEMPLATE_VOID(SetField64Volatile, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, new_value)
   return SetField64<kTransactionActive, kCheckTransaction, kVerifyFlags, true>(field_offset,
                                                                                new_value);
 }
 
 template<typename kSize, bool kIsVolatile>
 inline void Object::SetField(MemberOffset field_offset, kSize new_value) {
-  SWAP_PREAMBLE_TEMPLATE(SetField, Object, GATHER_TEMPLATE_ARGS(kSize, kIsVolatile), field_offset, new_value)
+  SWAP_PREAMBLE_TEMPLATE_VOID(SetField, Object, GATHER_TEMPLATE_ARGS(kSize, kIsVolatile), field_offset, new_value)
   uint8_t* raw_addr = reinterpret_cast<uint8_t*>(this) + field_offset.Int32Value();
   kSize* addr = reinterpret_cast<kSize*>(raw_addr);
   if (kIsVolatile) {
@@ -829,7 +829,7 @@ inline void Object::SetField(MemberOffset field_offset, kSize new_value) {
 
 template<typename kSize, bool kIsVolatile>
 inline kSize Object::GetField(MemberOffset field_offset) {
-  SWAP_PREAMBLE_TEMPLATE(GetField, Object, GATHER_TEMPLATE_ARGS(kSize, kIsVolatile), field_offset)
+  SWAP_PREAMBLE_TEMPLATE(GetField, Object, kSize, GATHER_TEMPLATE_ARGS(kSize, kIsVolatile), field_offset)
   if (!GetIgnoreReadFlag()) {
       SetReadBit();
   }
@@ -845,7 +845,7 @@ inline kSize Object::GetField(MemberOffset field_offset) {
 template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVerifyFlags>
 inline bool Object::CasFieldWeakSequentiallyConsistent64(MemberOffset field_offset,
                                                          int64_t old_value, int64_t new_value) {
-  SWAP_PREAMBLE_TEMPLATE(CasFieldWeakSequentiallyConsistent64, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, old_value, new_value)
+  SWAP_PREAMBLE_TEMPLATE(CasFieldWeakSequentiallyConsistent64, Object, bool, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, old_value, new_value)
   if (kCheckTransaction) {
     DCHECK_EQ(kTransactionActive, Runtime::Current()->IsActiveTransaction());
   }
@@ -863,7 +863,7 @@ inline bool Object::CasFieldWeakSequentiallyConsistent64(MemberOffset field_offs
 template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVerifyFlags>
 inline bool Object::CasFieldStrongSequentiallyConsistent64(MemberOffset field_offset,
                                                            int64_t old_value, int64_t new_value) {
-  SWAP_PREAMBLE_TEMPLATE(CasFieldStrongSequentiallyConsistent64, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, old_value, new_value)
+  SWAP_PREAMBLE_TEMPLATE(CasFieldStrongSequentiallyConsistent64, Object, bool, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, old_value, new_value)
   if (kCheckTransaction) {
     DCHECK_EQ(kTransactionActive, Runtime::Current()->IsActiveTransaction());
   }
@@ -881,7 +881,7 @@ inline bool Object::CasFieldStrongSequentiallyConsistent64(MemberOffset field_of
 template<class T, VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrierOption,
          bool kIsVolatile>
 inline T* Object::GetFieldObject(MemberOffset field_offset) {
-  SWAP_PREAMBLE_TEMPLATE(GetFieldObject, Object, GATHER_TEMPLATE_ARGS(T, kVerifyFlags, kReadBarrierOption, kIsVolatile), field_offset)
+  SWAP_PREAMBLE_TEMPLATE(GetFieldObject, Object, T*, GATHER_TEMPLATE_ARGS(T, kVerifyFlags, kReadBarrierOption, kIsVolatile), field_offset)
   if (!GetIgnoreReadFlag()) {
       SetReadBit();
   }
@@ -975,7 +975,7 @@ inline void Object::SetFieldObjectVolatile(MemberOffset field_offset, Object* ne
 
 template <VerifyObjectFlags kVerifyFlags>
 inline HeapReference<Object>* Object::GetFieldObjectReferenceAddr(MemberOffset field_offset) {
-  SWAP_PREAMBLE_TEMPLATE(GetFieldObjectReferenceAddr, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags), field_offset)
+  SWAP_PREAMBLE_TEMPLATE(GetFieldObjectReferenceAddr, Object, HeapReference<Object>*, GATHER_TEMPLATE_ARGS(kVerifyFlags), field_offset)
   if (kVerifyFlags & kVerifyThis) {
     VerifyObject(this);
   }
@@ -986,7 +986,7 @@ inline HeapReference<Object>* Object::GetFieldObjectReferenceAddr(MemberOffset f
 template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVerifyFlags>
 inline bool Object::CasFieldWeakSequentiallyConsistentObject(MemberOffset field_offset,
                                                              Object* old_value, Object* new_value) {
-  SWAP_PREAMBLE_TEMPLATE(CasFieldWeakSequentiallyConsistentObject, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, old_value, new_value)
+  SWAP_PREAMBLE_TEMPLATE(CasFieldWeakSequentiallyConsistentObject, Object, bool, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, old_value, new_value)
   bool success = CasFieldWeakSequentiallyConsistentObjectWithoutWriteBarrier<
       kTransactionActive, kCheckTransaction, kVerifyFlags>(field_offset, old_value, new_value);
   if (success) {
@@ -998,7 +998,7 @@ inline bool Object::CasFieldWeakSequentiallyConsistentObject(MemberOffset field_
 template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVerifyFlags>
 inline bool Object::CasFieldWeakSequentiallyConsistentObjectWithoutWriteBarrier(
     MemberOffset field_offset, Object* old_value, Object* new_value) {
-  SWAP_PREAMBLE_TEMPLATE(CasFieldWeakSequentiallyConsistentObjectWithoutWriteBarrier, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, old_value, new_value)
+  SWAP_PREAMBLE_TEMPLATE(CasFieldWeakSequentiallyConsistentObjectWithoutWriteBarrier, Object, bool, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, old_value, new_value)
   if (kCheckTransaction) {
     DCHECK_EQ(kTransactionActive, Runtime::Current()->IsActiveTransaction());
   }
@@ -1027,7 +1027,7 @@ inline bool Object::CasFieldWeakSequentiallyConsistentObjectWithoutWriteBarrier(
 template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVerifyFlags>
 inline bool Object::CasFieldStrongSequentiallyConsistentObject(MemberOffset field_offset,
                                                                Object* old_value, Object* new_value) {
-  SWAP_PREAMBLE_TEMPLATE(CasFieldStrongSequentiallyConsistentObject, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, old_value, new_value)
+  SWAP_PREAMBLE_TEMPLATE(CasFieldStrongSequentiallyConsistentObject, Object, bool, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, old_value, new_value)
   bool success = CasFieldStrongSequentiallyConsistentObjectWithoutWriteBarrier<
       kTransactionActive, kCheckTransaction, kVerifyFlags>(field_offset, old_value, new_value);
   if (success) {
@@ -1039,7 +1039,7 @@ inline bool Object::CasFieldStrongSequentiallyConsistentObject(MemberOffset fiel
 template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVerifyFlags>
 inline bool Object::CasFieldStrongSequentiallyConsistentObjectWithoutWriteBarrier(
     MemberOffset field_offset, Object* old_value, Object* new_value) {
-  SWAP_PREAMBLE_TEMPLATE(CasFieldStrongSequentiallyConsistentObjectWithoutWriteBarrier, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, old_value, new_value)
+  SWAP_PREAMBLE_TEMPLATE(CasFieldStrongSequentiallyConsistentObjectWithoutWriteBarrier, Object, bool, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, old_value, new_value)
   if (kCheckTransaction) {
     DCHECK_EQ(kTransactionActive, Runtime::Current()->IsActiveTransaction());
   }
@@ -1068,7 +1068,7 @@ inline bool Object::CasFieldStrongSequentiallyConsistentObjectWithoutWriteBarrie
 template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVerifyFlags>
 inline bool Object::CasFieldWeakRelaxedObjectWithoutWriteBarrier(
     MemberOffset field_offset, Object* old_value, Object* new_value) {
-  SWAP_PREAMBLE_TEMPLATE(CasFieldWeakRelaxedObjectWithoutWriteBarrier, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, old_value, new_value)
+  SWAP_PREAMBLE_TEMPLATE(CasFieldWeakRelaxedObjectWithoutWriteBarrier, Object, bool, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, old_value, new_value)
   if (kCheckTransaction) {
     DCHECK_EQ(kTransactionActive, Runtime::Current()->IsActiveTransaction());
   }
@@ -1097,7 +1097,7 @@ inline bool Object::CasFieldWeakRelaxedObjectWithoutWriteBarrier(
 template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVerifyFlags>
 inline bool Object::CasFieldStrongRelaxedObjectWithoutWriteBarrier(
     MemberOffset field_offset, Object* old_value, Object* new_value) {
-  SWAP_PREAMBLE_TEMPLATE(CasFieldStrongRelaxedObjectWithoutWriteBarrier, Object, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, old_value, new_value)
+  SWAP_PREAMBLE_TEMPLATE(CasFieldStrongRelaxedObjectWithoutWriteBarrier, Object, bool, GATHER_TEMPLATE_ARGS(kTransactionActive, kCheckTransaction, kVerifyFlags), field_offset, old_value, new_value)
   if (kCheckTransaction) {
     DCHECK_EQ(kTransactionActive, Runtime::Current()->IsActiveTransaction());
   }
@@ -1128,7 +1128,7 @@ template<bool kIsStatic,
          ReadBarrierOption kReadBarrierOption,
          typename Visitor>
 inline void Object::VisitFieldsReferences(uint32_t ref_offsets, const Visitor& visitor) {
-  SWAP_PREAMBLE_TEMPLATE(VisitFieldsReferences, Object, GATHER_TEMPLATE_ARGS(kIsStatic, kVerifyFlags, kReadBarrierOption, Visitor), ref_offsets, visitor)
+  SWAP_PREAMBLE_TEMPLATE_VOID(VisitFieldsReferences, Object, GATHER_TEMPLATE_ARGS(kIsStatic, kVerifyFlags, kReadBarrierOption, Visitor), ref_offsets, visitor)
   if (!kIsStatic && (ref_offsets != mirror::Class::kClassWalkSuper)) {
     // Instance fields and not the slow-path.
     uint32_t field_offset = mirror::kObjectHeaderSize;
@@ -1179,7 +1179,7 @@ inline void Object::VisitInstanceFieldsReferences(mirror::Class* klass, const Vi
 
 template<VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrierOption, typename Visitor>
 inline void Object::VisitStaticFieldsReferences(mirror::Class* klass, const Visitor& visitor) {
-  SWAP_PREAMBLE_TEMPLATE(VisitStaticFieldsReferences, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption, Visitor), klass, visitor)
+  SWAP_PREAMBLE_TEMPLATE_VOID(VisitStaticFieldsReferences, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption, Visitor), klass, visitor)
   DCHECK(!klass->IsTemp());
   klass->VisitFieldsReferences<true, kVerifyFlags, kReadBarrierOption>(0, visitor);
 }
@@ -1191,7 +1191,7 @@ inline bool Object::IsClassLoader() {
 
 template<VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrierOption>
 inline mirror::ClassLoader* Object::AsClassLoader() {
-  SWAP_PREAMBLE_TEMPLATE(AsClassLoader, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption), )
+  SWAP_PREAMBLE_TEMPLATE(AsClassLoader, Object, mirror::ClassLoader*, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption), )
   DCHECK((IsClassLoader<kVerifyFlags, kReadBarrierOption>()));
   return down_cast<mirror::ClassLoader*>(this);
 }
@@ -1203,7 +1203,7 @@ inline bool Object::IsDexCache() {
 
 template<VerifyObjectFlags kVerifyFlags, ReadBarrierOption kReadBarrierOption>
 inline mirror::DexCache* Object::AsDexCache() {
-  SWAP_PREAMBLE_TEMPLATE(AsDexCache, Object, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption), )
+  SWAP_PREAMBLE_TEMPLATE(AsDexCache, Object, mirror::DexCache*, GATHER_TEMPLATE_ARGS(kVerifyFlags, kReadBarrierOption), )
   DCHECK((IsDexCache<kVerifyFlags, kReadBarrierOption>()));
   return down_cast<mirror::DexCache*>(this);
 }
@@ -1215,7 +1215,7 @@ template <bool kVisitNativeRoots,
           typename JavaLangRefVisitor>
 inline void Object::VisitReferences(const Visitor& visitor,
                                     const JavaLangRefVisitor& ref_visitor) {
-  SWAP_PREAMBLE_TEMPLATE(VisitReferences, Object, GATHER_TEMPLATE_ARGS(kVisitNativeRoots, kVerifyFlags, kReadBarrierOption, Visitor, JavaLangRefVisitor), visitor, ref_visitor)
+  SWAP_PREAMBLE_TEMPLATE_VOID(VisitReferences, Object, GATHER_TEMPLATE_ARGS(kVisitNativeRoots, kVerifyFlags, kReadBarrierOption, Visitor, JavaLangRefVisitor), visitor, ref_visitor)
   SetIgnoreReadFlag();
   mirror::Class* klass = GetClass<kVerifyFlags, kReadBarrierOption>();
   visitor(this, ClassOffset(), false);
