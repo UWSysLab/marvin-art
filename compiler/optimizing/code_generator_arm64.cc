@@ -3837,18 +3837,14 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   CHECK(temp.code() != 0);
 
   // Read stub flag of object
-  Offset flagsOffset(8);
-  MemOperand flagsOperand = HeapOperandFrom(LocationFrom(objectReg), flagsOffset);
-  Load(Primitive::kPrimBoolean, temp, flagsOperand); // temp now holds flags byte
+  Load(Primitive::kPrimBoolean, temp, MemOperand(objectReg, 8)); // temp now holds flags byte
   __ Lsr(temp, temp, 7); // temp now holds stub flag
 
   // Skip stub check if stub flag is not set
   __ Cbz(temp, &stubCheckDoneLabel);
 
   // Load object address from stub
-  Offset objectAddrOffset(0);
-  MemOperand objectAddrOperand = HeapOperandFrom(LocationFrom(objectReg), objectAddrOffset);
-  Load(Primitive::kPrimInt, temp, objectAddrOperand); // temp now holds object_address_
+  Load(Primitive::kPrimInt, temp, MemOperand(objectReg, 0)); // temp now holds object_address_
 
   // Skip SwapInOnDemand() call if stub has a non-null object_address_
   __ Cbnz(temp, &swapDoneLabel);
@@ -3875,10 +3871,8 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   // Note: this code might be confusing because the register named objectReg
   // actually contains the stub address right now, and the register named temp
   // will hold the address of the corresponding real object.
-  Load(Primitive::kPrimInt, temp, objectAddrOperand); // temp now holds object_address_
-  Offset stubAddrOffset(12);
-  MemOperand stubAddrOperand = HeapOperandFrom(LocationFrom(temp), stubAddrOffset);
-  Store(Primitive::kPrimInt, objectReg.W(), stubAddrOperand);
+  Load(Primitive::kPrimInt, temp, MemOperand(objectReg, 0)); // temp now holds object_address_
+  Store(Primitive::kPrimInt, objectReg.W(), MemOperand(temp, 12));
 
   // Replace stub pointer in register with pointer to swapped-in object
   __ Mov(objectReg, temp);
@@ -3896,13 +3890,11 @@ void CodeGeneratorARM64::GenerateRestoreStub(Register objectReg) {
   // Note: unlike in the GenerateStubCheckAndSwapCode() code above, in this
   // method, the register named objectReg is now holding a real object, and
   // the register named temp will hold the stub address.
-  Offset stubAddrOffset(12);
-  MemOperand stubAddrOperand = HeapOperandFrom(LocationFrom(objectReg), stubAddrOffset);
-  Load(Primitive::kPrimInt, temp, stubAddrOperand);
+  Load(Primitive::kPrimInt, temp, MemOperand(objectReg, 12));
   __ Cbz(temp, &doneLabel);
-  __ Mov(objectReg, temp);
   Register zeroReg(kZeroRegCode, 32);
-  Store(Primitive::kPrimInt, zeroReg, stubAddrOperand);
+  Store(Primitive::kPrimInt, zeroReg, MemOperand(objectReg, 12));
+  __ Mov(objectReg, temp);
   __ Bind(&doneLabel);
 }
 
@@ -3915,18 +3907,14 @@ void CodeGeneratorARM64::GenerateUpdateStub(Register stubReg,
   CHECK(temp.code() != 0);
 
   // Read stub flag of object
-  Offset flagsOffset(8);
-  MemOperand flagsOperand = HeapOperandFrom(LocationFrom(stubReg), flagsOffset);
-  Load(Primitive::kPrimBoolean, temp, flagsOperand); // temp now holds flags byte
+  Load(Primitive::kPrimBoolean, temp, MemOperand(stubReg, 8)); // temp now holds flags byte
   __ Lsr(temp, temp, 7); // temp now holds stub flag
 
   // Skip stub update if stub flag is not set
   __ Cbz(temp, &doneLabel);
 
   // Load object address from stub
-  Offset objectAddrOffset(0);
-  MemOperand objectAddrOperand = HeapOperandFrom(LocationFrom(stubReg), objectAddrOffset);
-  Load(Primitive::kPrimInt, temp, objectAddrOperand); // temp now holds object_address_
+  Load(Primitive::kPrimInt, temp, MemOperand(stubReg, 0)); // temp now holds object_address_
 
   std::vector<CPURegister> registersToSave = IdentifyRegistersToSave(registersToMaybeSave,
                                                                      locations);
