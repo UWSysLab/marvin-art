@@ -638,6 +638,27 @@ class CodeGeneratorARM64 : public CodeGenerator {
   // Generate code to set the dirty bit in an object header.
   void GenerateSetDirtyBit(vixl::Register objectReg);
 
+  /*
+   * The two methods below generate code to lock and unlock an object's
+   * reclamation table entry. They increment and decrement, respectively, the
+   * table entry's app lock counter. Like the object header bit-setting methods
+   * above, they should do these increments and decrements atomically.
+   *
+   * The current implementation could result in a correctness issue where two
+   * threads attempt to lock or unlock the object at the same time, creating a
+   * situation where the OS either incorrectly thinks that an in-use object is
+   * unused or incorrectly thinks that an unused object is in use.
+   *
+   * TODO: Change these methods to use an atomic increment instruction, if one
+   * exists.
+   */
+
+  // Generate code to lock the given stub's reclamation table entry.
+  void GenerateLockReclamationTableEntry(vixl::Register tableEntryReg, vixl::Register temp);
+
+  // Generate code to unlock the given stub's reclamation table entry.
+  void GenerateUnlockReclamationTableEntry(vixl::Register tableEntryReg, vixl::Register temp);
+
  private:
   // Factored implementation of GenerateFieldLoadWithBakerReadBarrier
   // and GenerateArrayLoadWithBakerReadBarrier.

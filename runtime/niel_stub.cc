@@ -86,7 +86,6 @@ void Stub::PopulateFrom(mirror::Object * object) {
     SetObjectAddress(object);
     forwarding_address_ = 0;
     padding_b_ = 0;
-    padding_c_ = 0;
 
     num_refs_ = CountReferences(object);
 
@@ -105,6 +104,20 @@ void Stub::CopyRefsInto(mirror::Object * object) {
     object->VisitReferences(visitor, dummyVisitor);
 }
 
+int Stub::CountReferences(mirror::Object * object) {
+    // Copied from niel_instrumentation.cc
+    object->SetIgnoreReadFlag();
+    mirror::Class * klass = object->GetClass();
+    object->ClearIgnoreReadFlag();
+    uint32_t numPointers = klass->NumReferenceInstanceFields();
+    mirror::Class * superClass = klass->GetSuperClass();
+    while (superClass != nullptr) {
+        numPointers += superClass->NumReferenceInstanceFields();
+        superClass = superClass->GetSuperClass();
+    }
+    return numPointers;
+}
+
 void Stub::RawDump() {
     LOG(INFO) << "NIEL raw dump for stub @" << this;
     size_t stubSize = GetSize();
@@ -117,7 +130,7 @@ void Stub::RawDump() {
 
 void Stub::SemanticDump() {
     LOG(INFO) << "NIEL semantic dump for stub @" << this;
-    LOG(INFO) << "object_address_: " << std::hex << object_address_;
+    LOG(INFO) << "table_entry_: " << std::hex << table_entry_;
     LOG(INFO) << "forwarding_address_: " << std::hex << forwarding_address_;
     LOG(INFO) << "stub flag: "<< GetStubFlag();
     LOG(INFO) << "num_refs_: " << num_refs_;

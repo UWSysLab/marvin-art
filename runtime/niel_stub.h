@@ -7,6 +7,8 @@
 #include "base/mutex.h"
 #include "globals.h"
 
+#include "niel_reclamation_table.h"
+
 namespace art {
 
 namespace mirror {
@@ -49,11 +51,22 @@ class Stub {
     bool GetLargeObjectFlag();
 
     mirror::Object * GetObjectAddress() {
-        return reinterpret_cast<mirror::Object *>(object_address_);
+        return GetTableEntry()->GetObjectAddress();
     }
 
     void SetObjectAddress(mirror::Object * obj) {
-        object_address_ = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(obj));
+        GetTableEntry()->SetObjectAddress(obj);
+    }
+
+    void LockTableEntry();
+    void UnlockTableEntry();
+
+    TableEntry * GetTableEntry() {
+        return reinterpret_cast<TableEntry *>(table_entry_);
+    }
+
+    void SetTableEntry(TableEntry * entry) {
+        table_entry_ = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(entry));
     }
 
   private:
@@ -71,11 +84,9 @@ class Stub {
     void SetStubFlag();
     void ClearFlags();
 
-    // If the object corresponding to this stub has been swapped in on-demand,
-    // holds its address. If not, is 0.
-    uint32_t object_address_;
-
-    uint32_t forwarding_address_;
+    // The entry corresponding to the object represented by this stub in the
+    // reclamation table.
+    uint64_t table_entry_;
 
     /*
      * x_flags_ layout:
@@ -89,7 +100,7 @@ class Stub {
     uint8_t padding_b_;
     uint16_t num_refs_;
 
-    uint32_t padding_c_;
+    uint32_t forwarding_address_;
 };
 
 // Used as entry point for compiled code

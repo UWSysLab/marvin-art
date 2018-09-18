@@ -23,26 +23,30 @@
 #include "offsets.h"
 #include "verify_object.h"
 
-#include "niel_stub.h"
+#include "niel_stub-inl.h"
 #include "niel_swap.h"
 
 #define SWAP_PREAMBLE(func_name, type_name, return_type, ...) \
 if (UNLIKELY(GetStubFlag())) { \
   niel::swap::Stub * stub = (niel::swap::Stub *)this; \
+  stub->LockTableEntry(); \
   if (UNLIKELY(stub->GetObjectAddress() == nullptr)) { \
     niel::swap::SwapInOnDemand(stub); \
   } \
   return_type result = ((type_name *)(stub->GetObjectAddress()))->func_name(__VA_ARGS__); \
+  stub->UnlockTableEntry(); \
   return result; \
 }
 
 #define SWAP_PREAMBLE_TEMPLATE(func_name, type_name, return_type, template_args, ...) \
 if (UNLIKELY(GetStubFlag())) { \
   niel::swap::Stub * stub = (niel::swap::Stub *)this; \
+  stub->LockTableEntry(); \
   if (UNLIKELY(stub->GetObjectAddress() == nullptr)) { \
     niel::swap::SwapInOnDemand(stub); \
   } \
   return_type result = ((type_name *)(stub->GetObjectAddress()))->func_name<template_args>(__VA_ARGS__); \
+  stub->UnlockTableEntry(); \
   return result; \
 }
 

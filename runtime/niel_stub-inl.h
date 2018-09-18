@@ -32,20 +32,6 @@ inline mirror::Object * Stub::GetReference(int pos) {
     return GetReferenceAddress(pos)->AsMirrorPtr();
 }
 
-inline int Stub::CountReferences(mirror::Object * object) {
-    // Copied from niel_instrumentation.cc
-    object->SetIgnoreReadFlag();
-    mirror::Class * klass = object->GetClass();
-    object->ClearIgnoreReadFlag();
-    uint32_t numPointers = klass->NumReferenceInstanceFields();
-    mirror::Class * superClass = klass->GetSuperClass();
-    while (superClass != nullptr) {
-        numPointers += superClass->NumReferenceInstanceFields();
-        superClass = superClass->GetSuperClass();
-    }
-    return numPointers;
-}
-
 // Copied from mirror/object.h
 inline bool Stub::GetStubFlag() {
   return (bool)GetBitsAtomic8(x_flags_, 7, 1, std::memory_order_acquire);
@@ -83,6 +69,20 @@ inline void Stub::ClearFlags() {
 
 inline size_t Stub::GetSize() {
     return GetStubSize(num_refs_);
+}
+
+inline void Stub::LockTableEntry() {
+    while(GetTableEntry()->GetKernelLockBit()) {
+        continue;
+    }
+    GetTableEntry()->IncrAppLockCounter();
+    while (GetTableEntry()->GetKernelLockBit()) {
+        continue;
+    }
+}
+
+inline void Stub::UnlockTableEntry() {
+    GetTableEntry()->DecrAppLockCounter();
 }
 
 

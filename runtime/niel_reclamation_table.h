@@ -108,6 +108,7 @@ class TableEntry {
 class ReclamationTable {
   public:
     static ReclamationTable CreateTable(int numEntries);
+    ReclamationTable() : base_address_(nullptr), num_entries_(0) { }
     TableEntry * CreateEntry();
     void FreeEntry(TableEntry * entry);
     bool IsValid();

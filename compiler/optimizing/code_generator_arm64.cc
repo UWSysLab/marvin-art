@@ -3823,6 +3823,37 @@ void CodeGeneratorARM64::GenerateStaticOrDirectCall(HInvokeStaticOrDirect* invok
   DCHECK(!IsLeafMethod());
 }
 
+void CodeGeneratorARM64::GenerateLockReclamationTableEntry(Register tableEntryReg, Register temp) {
+  vixl::Label kernelLockBit1Label;
+  vixl::Label kernelLockBit2Label;
+
+  // Spin until the kernel lock bit is 0
+  __ Bind(&kernelLockBit1Label);
+  Load(Primitive::kPrimBoolean, temp, MemOperand(tableEntryReg, 0)); // temp now holds table_entry_->bit_flags_
+  __ Lsr(temp, temp, niel::swap::KERNEL_LOCK_BIT_OFFSET); // temp now holds the table entry's kernel lock bit
+  __ And(temp, temp, 0x1);
+  __ Cbnz(temp, &kernelLockBit1Label);
+
+  // Increment the app lock counter
+  Load(Primitive::kPrimBoolean, temp, MemOperand(tableEntryReg, 1)); // temp now holds the table entry's app lock counter
+  __ Add(temp, temp, 1);
+  Store(Primitive::kPrimBoolean, temp, MemOperand(tableEntryReg, 1));
+
+  // Spin until the kernel lock bit is 0
+  __ Bind(&kernelLockBit2Label);
+  Load(Primitive::kPrimBoolean, temp, MemOperand(tableEntryReg, 0)); // temp now holds table_entry_->bit_flags_
+  __ Lsr(temp, temp, niel::swap::KERNEL_LOCK_BIT_OFFSET); // temp now holds the table entry's kernel lock bit
+  __ And(temp, temp, 0x1);
+  __ Cbnz(temp, &kernelLockBit2Label);
+}
+
+void CodeGeneratorARM64::GenerateUnlockReclamationTableEntry(Register tableEntryReg, Register temp) {
+  // Decrement the app lock counter
+  Load(Primitive::kPrimBoolean, temp, MemOperand(tableEntryReg, 1)); // temp now holds the table entry's app lock counter
+  __ Sub(temp, temp, 1);
+  Store(Primitive::kPrimBoolean, temp, MemOperand(tableEntryReg, 1));
+}
+
 void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
       const std::vector<CPURegister> & registersToMaybeSave, LocationSummary * locations) {
   UseScratchRegisterScope temps(GetVIXLAssembler());
@@ -3833,18 +3864,26 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   // a register of type kNoRegister, but when it gets converted to a
   // W register, its type is lost, and it becomes a normal W register with
   // code 0
-  Register temp = temps.AcquireW();
+  Register temp = temps.AcquireX();
   CHECK(temp.code() != 0);
+  Register temp2 = temps.AcquireW();
+  CHECK(temp2.code() != 0);
 
   // Read stub flag of object
-  Load(Primitive::kPrimBoolean, temp, MemOperand(objectReg, 8)); // temp now holds flags byte
+  Load(Primitive::kPrimBoolean, temp.W(), MemOperand(objectReg, 8)); // temp now holds flags byte
   __ Lsr(temp, temp, 7); // temp now holds stub flag
 
   // Skip stub check if stub flag is not set
   __ Cbz(temp, &stubCheckDoneLabel);
 
-  // Load object address from stub
-  Load(Primitive::kPrimInt, temp, MemOperand(objectReg, 0)); // temp now holds object_address_
+  // Load reclamation table entry address from stub
+  Load(Primitive::kPrimLong, temp, MemOperand(objectReg, 0)); // temp now holds table_entry_
+
+  // Lock reclamation table entry
+  GenerateLockReclamationTableEntry(temp, temp2);
+
+  // Load object address from reclamation table entry
+  Load(Primitive::kPrimInt, temp.W(), MemOperand(temp, 4)); // temp now holds table_entry_->object_address_
 
   // Skip SwapInOnDemand() call if stub has a non-null object_address_
   __ Cbnz(temp, &swapDoneLabel);
@@ -3871,7 +3910,8 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   // Note: this code might be confusing because the register named objectReg
   // actually contains the stub address right now, and the register named temp
   // will hold the address of the corresponding real object.
-  Load(Primitive::kPrimInt, temp, MemOperand(objectReg, 0)); // temp now holds object_address_
+  Load(Primitive::kPrimLong, temp, MemOperand(objectReg, 0)); // temp now holds table_entry_
+  Load(Primitive::kPrimInt, temp.W(), MemOperand(temp, 4)); // temp now holds table_entry_->object_address_
   Store(Primitive::kPrimInt, objectReg.W(), MemOperand(temp, 12));
 
   // Replace stub pointer in register with pointer to swapped-in object
@@ -3884,17 +3924,76 @@ void CodeGeneratorARM64::GenerateRestoreStub(Register objectReg) {
   UseScratchRegisterScope temps(GetVIXLAssembler());
   vixl::Label doneLabel;
 
-  Register temp = temps.AcquireW();
+  Register temp = temps.AcquireX();
   CHECK(temp.code() != 0);
 
-  // Note: unlike in the GenerateStubCheckAndSwapCode() code above, in this
-  // method, the register named objectReg is now holding a real object, and
-  // the register named temp will hold the stub address.
-  Load(Primitive::kPrimInt, temp, MemOperand(objectReg, 12));
+  /*
+   * We're going to do some terrible things here, due to the fact that we need
+   * two registers for the decrement that we have to perform as part of
+   * unlocking the reclamation table entry, but the compiler sometimes only has
+   * one temp register free when this method is called. Specifically, we're
+   * going to use this method's objectReg as the temp register for the unlock
+   * operation, and we're going to use this method's temp register as the table
+   * entry register for the unlock operation. We have to use objectReg as the
+   * temp register because the table entry register has to be 64 bits wide, and
+   * objectReg is only guaranteed to be a 32-bit register. Using objectReg in
+   * this way is fine because we can recover the object address from the table
+   * entry after performing the unlock operation.
+   *
+   * This strategy has a race condition that can cause crashes, because we
+   * unlock the reclamation table entry before looking at the object header one
+   * last time to grab the stub address. If the OS reclaims the object
+   * immediately after we unlock the reclamation table entry, we could end up
+   * hitting a segfault when we do that last access of the object header.
+   *
+   * This is the plan:
+   *
+   * 1. Move the object address into the temp register.
+   * 2. Load the stub address into the objectReg register.
+   * 3. Load the reclamation table entry address into the temp register.
+   * 4. Pass the temp register into GenerateUnlockReclamationTableEntry() as
+   * its tableEntryRegister argument, and pass in the objectReg register in as
+   * its temp argument (we have to use objectReg as the temp register there
+   * because our temp register in this method is the only one wide enough to
+   * hold the table entry address).
+   * 5. Load the object address into the objectReg register.
+   * 6. Load the stub address into the temp register.
+   * 7. Zero out the padding word of the object header.
+   * 8. Move the stub address into the objectReg register.
+   *
+   * TODO: Think of a way to prevent the race condition mentioned above.
+   */
+
+  // Load the object's padding word and check if it is a stub address
+  Load(Primitive::kPrimInt, temp.W(), MemOperand(objectReg, 12)); // temp now holds the stub address
   __ Cbz(temp, &doneLabel);
+
+  // Move object address into temp
+  __ Mov(temp, objectReg); // temp now holds the object address
+
+  // Load stub address into objectReg
+  Load(Primitive::kPrimInt, objectReg.W(), MemOperand(temp, 12)); // objectReg now holds the stub address
+
+  // Load reclamation table entry address from stub
+  Load(Primitive::kPrimLong, temp, MemOperand(objectReg, 0)); // temp now holds table_entry_
+
+  // Unlock reclamation table entry
+  GenerateUnlockReclamationTableEntry(temp, objectReg.W()); // objectReg now holds garbage
+
+  // Load object address back into objectReg
+  Load(Primitive::kPrimInt, objectReg.W(), MemOperand(temp, 4)); // objectReg now holds the object address
+
+  // Load stub address
+  Load(Primitive::kPrimInt, temp.W(), MemOperand(objectReg, 12)); // temp now holds the stub address
+
+  // Zero out the object's padding word
   Register zeroReg(kZeroRegCode, 32);
   Store(Primitive::kPrimInt, zeroReg, MemOperand(objectReg, 12));
-  __ Mov(objectReg, temp);
+
+  // Replace the object's address with the stub's address in the object
+  // register
+  __ Mov(objectReg, temp.W()); // objectReg now holds the stub address
+
   __ Bind(&doneLabel);
 }
 
@@ -3903,18 +4002,26 @@ void CodeGeneratorARM64::GenerateUpdateStub(Register stubReg,
   UseScratchRegisterScope temps(GetVIXLAssembler());
   vixl::Label doneLabel;
 
-  Register temp = temps.AcquireW();
+  Register temp = temps.AcquireX();
   CHECK(temp.code() != 0);
+  Register temp2 = temps.AcquireW();
+  CHECK(temp2.code() != 0);
 
   // Read stub flag of object
-  Load(Primitive::kPrimBoolean, temp, MemOperand(stubReg, 8)); // temp now holds flags byte
+  Load(Primitive::kPrimBoolean, temp.W(), MemOperand(stubReg, 8)); // temp now holds flags byte
   __ Lsr(temp, temp, 7); // temp now holds stub flag
 
   // Skip stub update if stub flag is not set
   __ Cbz(temp, &doneLabel);
 
+  // Load reclamation table entry address from stub
+  Load(Primitive::kPrimLong, temp, MemOperand(stubReg, 0)); // temp now holds table_entry_
+
+  // Lock reclamation table entry
+  GenerateLockReclamationTableEntry(temp, temp2);
+
   // Load object address from stub
-  Load(Primitive::kPrimInt, temp, MemOperand(stubReg, 0)); // temp now holds object_address_
+  Load(Primitive::kPrimInt, temp.W(), MemOperand(temp, 4)); // temp now holds table_entry_->object_address_
 
   std::vector<CPURegister> registersToSave = IdentifyRegistersToSave(registersToMaybeSave,
                                                                      locations);
@@ -3928,6 +4035,12 @@ void CodeGeneratorARM64::GenerateUpdateStub(Register stubReg,
   __ Ldr(lr, MemOperand(tr, entryPointOffset));
   __ Blr(lr);
   GenerateRestoreRegisters(registersToSave);
+
+  // Load reclamation table entry address from stub (again)
+  Load(Primitive::kPrimLong, temp, MemOperand(stubReg, 0)); // temp now holds table_entry_
+
+  // Unlock reclamation table entry
+  GenerateUnlockReclamationTableEntry(temp, temp2);
 
   __ Bind(&doneLabel);
 }

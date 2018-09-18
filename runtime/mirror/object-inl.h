@@ -912,6 +912,7 @@ inline void Object::SetFieldObjectWithoutWriteBarrier(MemberOffset field_offset,
                                                       Object* new_value) {
   if (UNLIKELY(GetStubFlag())) {
     niel::swap::Stub * stub = (niel::swap::Stub *)this;
+    stub->LockTableEntry();
     if (UNLIKELY(stub->GetObjectAddress() == nullptr)) {
       niel::swap::SwapInOnDemand(stub);
     }
@@ -919,6 +920,7 @@ inline void Object::SetFieldObjectWithoutWriteBarrier(MemberOffset field_offset,
         <kTransactionActive, kCheckTransaction, kVerifyFlags, kIsVolatile>
         (field_offset, new_value);
     stub->PopulateFrom(stub->GetObjectAddress());
+    stub->UnlockTableEntry();
     return;
   }
 

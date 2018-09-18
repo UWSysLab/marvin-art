@@ -7,6 +7,7 @@
 #include "mirror/object.h"
 #include "mirror/object-inl.h"
 #include "niel_common.h"
+#include "niel_reclamation_table.h"
 #include "niel_scoped_timer.h"
 #include "niel_stub-inl.h"
 #include "runtime.h"
@@ -181,6 +182,14 @@ bool swapEnabled = false;
  * TODO: make locked by mutator_lock_
  */
 gc::space::LargeObjectSpace * swappedInSpace = nullptr;
+
+/*
+ * Not locked
+ *
+ * TODO: Add assumption that ReclamationTable::CreateEntry() will only be
+ * called by the heap task thread?
+ */
+ReclamationTable recTable;
 
 /*
  * Locked by swapFileMutex
@@ -758,6 +767,8 @@ void SwapObjectsOut(Thread * self, gc::Heap * heap) {
                                                      &bytes_tl_bulk_allocated);
             CHECK(stubData != nullptr);
             stub = (Stub *)stubData;
+            TableEntry * entry = recTable.CreateEntry();
+            stub->SetTableEntry(entry);
             stub->PopulateFrom(obj);
 
             if (heap->GetLargeObjectsSpace()->Contains(obj)) {
@@ -1060,6 +1071,12 @@ void InitIfNecessary(Thread * self) {
                        << (void *)swappedInSpace->Begin();
             return;
         }
+    }
+
+    recTable = ReclamationTable::CreateTable(50000);
+    if (!recTable.IsValid()) {
+        LOG(ERROR) << "NIELERROR error creating reclamation table";
+        return;
     }
 
     swapEnabled = true;
