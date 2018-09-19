@@ -3958,8 +3958,7 @@ void CodeGeneratorARM64::GenerateRestoreStub(Register objectReg) {
    * hold the table entry address).
    * 5. Load the object address into the objectReg register.
    * 6. Load the stub address into the temp register.
-   * 7. Zero out the padding word of the object header.
-   * 8. Move the stub address into the objectReg register.
+   * 7. Move the stub address into the objectReg register.
    *
    * TODO: Think of a way to prevent the race condition mentioned above.
    */
@@ -3986,9 +3985,27 @@ void CodeGeneratorARM64::GenerateRestoreStub(Register objectReg) {
   // Load stub address
   Load(Primitive::kPrimInt, temp.W(), MemOperand(objectReg, 12)); // temp now holds the stub address
 
-  // Zero out the object's padding word
-  Register zeroReg(kZeroRegCode, 32);
-  Store(Primitive::kPrimInt, zeroReg, MemOperand(objectReg, 12));
+  /*
+   * Previously, we zeroed out the object's padding word here, but I think that
+   * step both introduced a race condition and was unnecessary.
+   *
+   * The race condition: if two threads are accessing the same object at the
+   * same time, one thread might zero out the padding word while the second
+   * thread is in the process of reading the stub address from the padding word
+   * (but after that second thread did its initial check of whether the padding
+   * word is zero). As a result, the second thread would replace the object
+   * address with a null pointer.
+   *
+   * Why it was unnecessary: the only reason to zero out the object's padding
+   * word is to prevent compiled code from incorrectly replacing the object
+   * address with its stub's address in the future. But once we've created a
+   * stub for an object, we will always want to replace the object address with
+   * the stub address. It's true that the object might have an old stub address
+   * sitting in its padding word after a semi-space GC runs, but when the
+   * compiled code starts accessing that object through its stub, it will
+   * overwrite the padding word with the stub's new address, so there should
+   * never be a situation where the old stub address is accessed.
+   */
 
   // Replace the object's address with the stub's address in the object
   // register
