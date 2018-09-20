@@ -86,6 +86,10 @@ class TableEntry {
         object_address_ = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(obj));
     }
 
+    TableEntry() {
+        stub_back_pointer_ = 0; // prevents the compiler from complaining about an unused variable
+    }
+
   private:
     bool GetBit(unsigned int offset) {
         return ((bit_flags_.load() >> offset) & 0x1);
@@ -103,6 +107,7 @@ class TableEntry {
     std::atomic<uint8_t> app_lock_counter_;
     uint16_t num_pages_;
     uint32_t object_address_;
+    uint32_t stub_back_pointer_; // only used by compiled code
 };
 
 class ReclamationTable {

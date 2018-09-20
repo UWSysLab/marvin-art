@@ -3882,6 +3882,9 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   // Lock reclamation table entry
   GenerateLockReclamationTableEntry(temp, temp2);
 
+  // Put a back-pointer to the stub in the reclamation table entry
+  Store(Primitive::kPrimInt, objectReg.W(), MemOperand(temp, 8));
+
   // Load object address from reclamation table entry
   Load(Primitive::kPrimInt, temp.W(), MemOperand(temp, 4)); // temp now holds table_entry_->object_address_
 
@@ -3937,53 +3940,27 @@ void CodeGeneratorARM64::GenerateRestoreStub(Register objectReg) {
    * entry register for the unlock operation. We have to use objectReg as the
    * temp register because the table entry register has to be 64 bits wide, and
    * objectReg is only guaranteed to be a 32-bit register. Using objectReg in
-   * this way is fine because we can recover the object address from the table
+   * this way is fine because we can recover the stub address from the table
    * entry after performing the unlock operation.
    *
-   * This strategy has a race condition that can cause crashes, because we
-   * unlock the reclamation table entry before looking at the object header one
-   * last time to grab the stub address. If the OS reclaims the object
-   * immediately after we unlock the reclamation table entry, we could end up
-   * hitting a segfault when we do that last access of the object header.
-   *
    * This is the plan:
-   *
-   * 1. Move the object address into the temp register.
-   * 2. Load the stub address into the objectReg register.
-   * 3. Load the reclamation table entry address into the temp register.
-   * 4. Pass the temp register into GenerateUnlockReclamationTableEntry() as
+   * 1. Load the object header's padding word into the temp register.
+   * 2. Check if the padding word is a stub address, and if not, skip the
+   * remaining steps.
+   * 3. Move the stub address into the objectReg register.
+   * 4. Load the reclamation table entry address into the temp register.
+   * 5. Pass the temp register into GenerateUnlockReclamationTableEntry() as
    * its tableEntryRegister argument, and pass in the objectReg register in as
    * its temp argument (we have to use objectReg as the temp register there
    * because our temp register in this method is the only one wide enough to
    * hold the table entry address).
-   * 5. Load the object address into the objectReg register.
-   * 6. Load the stub address into the temp register.
-   * 7. Move the stub address into the objectReg register.
-   *
-   * TODO: Think of a way to prevent the race condition mentioned above.
+   * 6. Use the back-pointer in the reclamation table entry to load the stub
+   * address into the objectReg register.
    */
 
   // Load the object's padding word and check if it is a stub address
   Load(Primitive::kPrimInt, temp.W(), MemOperand(objectReg, 12)); // temp now holds the stub address
   __ Cbz(temp, &doneLabel);
-
-  // Move object address into temp
-  __ Mov(temp, objectReg); // temp now holds the object address
-
-  // Load stub address into objectReg
-  Load(Primitive::kPrimInt, objectReg.W(), MemOperand(temp, 12)); // objectReg now holds the stub address
-
-  // Load reclamation table entry address from stub
-  Load(Primitive::kPrimLong, temp, MemOperand(objectReg, 0)); // temp now holds table_entry_
-
-  // Unlock reclamation table entry
-  GenerateUnlockReclamationTableEntry(temp, objectReg.W()); // objectReg now holds garbage
-
-  // Load object address back into objectReg
-  Load(Primitive::kPrimInt, objectReg.W(), MemOperand(temp, 4)); // objectReg now holds the object address
-
-  // Load stub address
-  Load(Primitive::kPrimInt, temp.W(), MemOperand(objectReg, 12)); // temp now holds the stub address
 
   /*
    * Previously, we zeroed out the object's padding word here, but I think that
@@ -4007,9 +3984,18 @@ void CodeGeneratorARM64::GenerateRestoreStub(Register objectReg) {
    * never be a situation where the old stub address is accessed.
    */
 
-  // Replace the object's address with the stub's address in the object
-  // register
+  // Move stub address into objectReg
   __ Mov(objectReg, temp.W()); // objectReg now holds the stub address
+
+  // Load reclamation table entry address from stub
+  Load(Primitive::kPrimLong, temp, MemOperand(objectReg, 0)); // temp now holds table_entry_
+
+  // Unlock reclamation table entry
+  GenerateUnlockReclamationTableEntry(temp, objectReg.W()); // objectReg now holds garbage
+
+  // Load stub address into objectReg using the reclamation table entry's
+  // back-pointer
+  Load(Primitive::kPrimInt, objectReg.W(), MemOperand(temp, 8)); // objectReg now holds stub address
 
   __ Bind(&doneLabel);
 }
