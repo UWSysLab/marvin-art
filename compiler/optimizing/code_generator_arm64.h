@@ -609,7 +609,7 @@ class CodeGeneratorARM64 : public CodeGenerator {
   void GenerateRestoreRegisters(const std::vector<vixl::CPURegister> & savedRegisters);
 
   /*
-   * The three methods below all generate code to set different bits in the
+   * The two methods below generate code to set different bits in the
    * object header's x_flags_ byte. Ideally, these bits should be set
    * atomically with acquire-release semantics using the AArch64 instruction
    * LDEORALB, but VIXL does not appear to have support for LDEORALB. The
@@ -632,11 +632,9 @@ class CodeGeneratorARM64 : public CodeGenerator {
   // set, set the read counter bit in the object header.
   void GenerateSetReadBit(vixl::Register objectReg);
 
-  // Generate code to set the write counter bit in an object header.
-  void GenerateSetWriteBit(vixl::Register objectReg);
-
-  // Generate code to set the dirty bit in an object header.
-  void GenerateSetDirtyBit(vixl::Register objectReg);
+  // Generate code to set the write bit and the dirty bit in an object header
+  // (compiled code always writes to both bits at the same time).
+  void GenerateSetWriteBitAndDirtyBit(vixl::Register objectReg);
 
   /*
    * The two methods below generate code to lock and unlock an object's
