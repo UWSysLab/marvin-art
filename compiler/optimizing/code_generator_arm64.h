@@ -602,6 +602,9 @@ class CodeGeneratorARM64 : public CodeGenerator {
                                      LocationSummary * locations);
 
   int ComputeStackGrowthSize(const std::vector<vixl::CPURegister> & registersToSave);
+  void GetTypedRegisterLists(const std::vector<vixl::CPURegister> & registersToSave,
+                             std::vector<vixl::Register> & coreRegisters,
+                             std::vector<vixl::VRegister> & vRegisters);
 
   // Generate code to save the registers in the given list onto the stack and
   // restore them from the stack.

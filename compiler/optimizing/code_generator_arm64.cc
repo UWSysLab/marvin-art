@@ -4128,20 +4128,55 @@ int CodeGeneratorARM64::ComputeStackGrowthSize(
   return stackGrowthSize;
 }
 
+void CodeGeneratorARM64::GetTypedRegisterLists(const std::vector<CPURegister> & registersToSave,
+    std::vector<Register> & coreRegisters, std::vector<VRegister> & vRegisters) {
+  CHECK(coreRegisters.size() == 0);
+  CHECK(vRegisters.size() == 0);
+  for (size_t i = 0; i < registersToSave.size(); i++) {
+    CPURegister reg = registersToSave[i];
+    if (reg.IsRegister()) {
+      coreRegisters.push_back(Register(reg));
+    }
+    else if (reg.IsVRegister()) {
+      vRegisters.push_back(VRegister(reg));
+    }
+  }
+  CHECK(coreRegisters.size() + vRegisters.size() == registersToSave.size());
+}
+
 void CodeGeneratorARM64::GenerateSaveRegisters(
     const std::vector<CPURegister> & registersToSave) {
   int stackGrowthSize = ComputeStackGrowthSize(registersToSave);
+  std::vector<Register> coreRegisters;
+  std::vector<VRegister> vRegisters;
+  GetTypedRegisterLists(registersToSave, coreRegisters, vRegisters);
   if (registersToSave.size() > 0) {
     __ Sub(sp, sp, stackGrowthSize);
-    size_t i = 0;
-    while (i < registersToSave.size()) {
-      if (i < registersToSave.size() - 1) {
-        __ Stp(registersToSave[i], registersToSave[i + 1], MemOperand(sp, i * REGISTER_WIDTH));
+    size_t i = 0; // index in current register list
+    size_t memoryOffset = 0; // current offset from SP, in bytes
+    while (i < coreRegisters.size()) {
+      if (i < coreRegisters.size() - 1) {
+        __ Stp(coreRegisters[i], coreRegisters[i + 1], MemOperand(sp, memoryOffset));
         i += 2;
+        memoryOffset += 2 * REGISTER_WIDTH;
       }
       else {
-        __ Str(registersToSave[i], MemOperand(sp, i * REGISTER_WIDTH));
+        __ Str(coreRegisters[i], MemOperand(sp, memoryOffset));
         i++;
+        memoryOffset += REGISTER_WIDTH;
+      }
+    }
+    i = 0;
+    while (i < vRegisters.size()) {
+      if (i < vRegisters.size() - 1) {
+        __ Stp(vRegisters[i], vRegisters[i + 1], MemOperand(sp, memoryOffset));
+        i += 2;
+        memoryOffset += 2 * REGISTER_WIDTH;
+      }
+      else {
+        __ Str(vRegisters[i], MemOperand(sp, memoryOffset));
+        i++;
+        memoryOffset += REGISTER_WIDTH;
       }
     }
   }
@@ -4150,16 +4185,35 @@ void CodeGeneratorARM64::GenerateSaveRegisters(
 void CodeGeneratorARM64::GenerateRestoreRegisters(
     const std::vector<CPURegister> & savedRegisters) {
   int stackGrowthSize = ComputeStackGrowthSize(savedRegisters);
+  std::vector<Register> coreRegisters;
+  std::vector<VRegister> vRegisters;
+  GetTypedRegisterLists(savedRegisters, coreRegisters, vRegisters);
   if (savedRegisters.size() > 0) {
-    size_t i = 0;
-    while (i < savedRegisters.size()) {
-      if (i < savedRegisters.size() - 1) {
-        __ Ldp(savedRegisters[i], savedRegisters[i + 1], MemOperand(sp, i * REGISTER_WIDTH));
+    size_t i = 0; // index in current register list
+    size_t memoryOffset = 0; // current offset from SP, in bytes
+    while (i < coreRegisters.size()) {
+      if (i < coreRegisters.size() - 1) {
+        __ Ldp(coreRegisters[i], coreRegisters[i + 1], MemOperand(sp, memoryOffset));
         i += 2;
+        memoryOffset += 2 * REGISTER_WIDTH;
       }
       else {
-        __ Ldr(savedRegisters[i], MemOperand(sp, i * REGISTER_WIDTH));
+        __ Ldr(coreRegisters[i], MemOperand(sp, memoryOffset));
         i++;
+        memoryOffset += REGISTER_WIDTH;
+      }
+    }
+    i = 0;
+    while (i < vRegisters.size()) {
+      if (i < vRegisters.size() - 1) {
+        __ Ldp(vRegisters[i], vRegisters[i + 1], MemOperand(sp, memoryOffset));
+        i += 2;
+        memoryOffset += 2 * REGISTER_WIDTH;
+      }
+      else {
+        __ Ldr(vRegisters[i], MemOperand(sp, memoryOffset));
+        i++;
+        memoryOffset += REGISTER_WIDTH;
       }
     }
     __ Add(sp, sp, stackGrowthSize);
