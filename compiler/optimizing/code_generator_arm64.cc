@@ -1105,6 +1105,14 @@ void CodeGeneratorARM64::SetupBlockedRegisters() const {
     blocked_core_registers_[reserved_core_registers.PopLowestIndex().code()] = true;
   }
 
+  // Added by Niel: we use r20 to store the stub's address during an object
+  // access. After the object access finishes, we need to unlock the stub's
+  // reclamation table entry, but sometimes the compiled code overwrites the
+  // register holding the object's address with the output of the access, so we
+  // need to store the stub's address in a different register that we know will
+  // not get overwritten.
+  blocked_core_registers_[vixl::x20.code()] = true;
+
   CPURegList reserved_fp_registers = vixl_reserved_fp_registers;
   while (!reserved_fp_registers.IsEmpty()) {
     blocked_fpu_registers_[reserved_fp_registers.PopLowestIndex().code()] = true;
@@ -1631,9 +1639,12 @@ void InstructionCodeGeneratorARM64::HandleFieldGet(HInstruction* instruction,
   BlockPoolsScope block_pools(GetVIXLAssembler());
   MemOperand field = HeapOperand(InputRegisterAt(instruction, 0), field_info.GetFieldOffset());
 
+  Register stubReg(vixl::x20);
   std::vector<CPURegister> registersToMaybeSave;
   registersToMaybeSave.push_back(InputRegisterAt(instruction, 0));
+  registersToMaybeSave.push_back(stubReg);
   codegen_->GenerateStubCheckAndSwapCode(InputRegisterAt(instruction, 0),
+                                         stubReg,
                                          registersToMaybeSave,
                                          locations);
 
@@ -1677,8 +1688,9 @@ void InstructionCodeGeneratorARM64::HandleFieldGet(HInstruction* instruction,
   }
 
   if (InputRegisterAt(instruction, 0).code() != OutputCPURegister(instruction).code()) {
-    codegen_->GenerateRestoreStub(InputRegisterAt(instruction, 0));
+    codegen_->GenerateRestoreStub(InputRegisterAt(instruction, 0), stubReg);
   }
+  codegen_->GenerateMaybeUnlockTableEntry(stubReg);
 }
 
 void LocationsBuilderARM64::HandleFieldSet(HInstruction* instruction) {
@@ -1704,10 +1716,13 @@ void InstructionCodeGeneratorARM64::HandleFieldSet(HInstruction* instruction,
   Offset offset = field_info.GetFieldOffset();
   Primitive::Type field_type = field_info.GetFieldType();
 
+  Register stubReg(vixl::x20);
   std::vector<CPURegister> registersToMaybeSave;
   registersToMaybeSave.push_back(obj);
   registersToMaybeSave.push_back(value);
+  registersToMaybeSave.push_back(stubReg);
   codegen_->GenerateStubCheckAndSwapCode(obj,
+                                         stubReg,
                                          registersToMaybeSave,
                                          instruction->GetLocations());
 
@@ -1740,7 +1755,8 @@ void InstructionCodeGeneratorARM64::HandleFieldSet(HInstruction* instruction,
   }
 
   codegen_->GenerateSetWriteBitAndDirtyBit(obj);
-  codegen_->GenerateRestoreStub(obj);
+  codegen_->GenerateRestoreStub(obj, stubReg);
+  codegen_->GenerateMaybeUnlockTableEntry(stubReg);
   if (field_type == Primitive::kPrimNot) {
     codegen_->GenerateUpdateStub(obj, registersToMaybeSave, instruction->GetLocations());
   }
@@ -2084,8 +2100,10 @@ void InstructionCodeGeneratorARM64::VisitArrayGet(HArrayGet* instruction) {
   uint32_t offset = mirror::Array::DataOffset(Primitive::ComponentSize(type)).Uint32Value();
   Location out = locations->Out();
 
+  Register stubReg(vixl::x20);
   std::vector<CPURegister> registersToMaybeSave;
   registersToMaybeSave.push_back(obj);
+  registersToMaybeSave.push_back(stubReg);
   if (index.IsRegister()) {
     registersToMaybeSave.push_back(XRegisterFrom(index));
   }
@@ -2096,7 +2114,7 @@ void InstructionCodeGeneratorARM64::VisitArrayGet(HArrayGet* instruction) {
     CHECK(!index.IsRegisterPair());
     CHECK(!index.IsFpuRegisterPair());
   }
-  codegen_->GenerateStubCheckAndSwapCode(obj, registersToMaybeSave, locations);
+  codegen_->GenerateStubCheckAndSwapCode(obj, stubReg, registersToMaybeSave, locations);
   codegen_->GenerateSetReadBit(obj);
 
   MacroAssembler* masm = GetVIXLAssembler();
@@ -2157,8 +2175,9 @@ void InstructionCodeGeneratorARM64::VisitArrayGet(HArrayGet* instruction) {
   }
 
   if (!(out.IsRegister() && out.reg() == helpers::ARTRegCodeFromVIXL(obj.code()))) {
-    codegen_->GenerateRestoreStub(obj);
+    codegen_->GenerateRestoreStub(obj, stubReg);
   }
+  codegen_->GenerateMaybeUnlockTableEntry(stubReg);
 }
 
 void LocationsBuilderARM64::VisitArrayLength(HArrayLength* instruction) {
@@ -2168,9 +2187,12 @@ void LocationsBuilderARM64::VisitArrayLength(HArrayLength* instruction) {
 }
 
 void InstructionCodeGeneratorARM64::VisitArrayLength(HArrayLength* instruction) {
+  Register stubReg(vixl::x20);
   std::vector<CPURegister> registersToMaybeSave;
   registersToMaybeSave.push_back(InputRegisterAt(instruction, 0));
+  registersToMaybeSave.push_back(stubReg);
   codegen_->GenerateStubCheckAndSwapCode(InputRegisterAt(instruction, 0),
+                                         stubReg,
                                          registersToMaybeSave,
                                          instruction->GetLocations());
   codegen_->GenerateSetReadBit(InputRegisterAt(instruction, 0));
@@ -2181,8 +2203,9 @@ void InstructionCodeGeneratorARM64::VisitArrayLength(HArrayLength* instruction) 
   codegen_->MaybeRecordImplicitNullCheck(instruction);
 
   if (InputRegisterAt(instruction, 0).code() != OutputRegister(instruction).code()) {
-    codegen_->GenerateRestoreStub(InputRegisterAt(instruction, 0));
+    codegen_->GenerateRestoreStub(InputRegisterAt(instruction, 0), stubReg);
   }
+  codegen_->GenerateMaybeUnlockTableEntry(stubReg);
 }
 
 void LocationsBuilderARM64::VisitArraySet(HArraySet* instruction) {
@@ -2221,10 +2244,12 @@ void InstructionCodeGeneratorARM64::VisitArraySet(HArraySet* instruction) {
   MacroAssembler* masm = GetVIXLAssembler();
   BlockPoolsScope block_pools(masm);
 
+  Register stubReg(vixl::x20);
   std::vector<CPURegister> registersToMaybeSave;
   registersToMaybeSave.push_back(array);
   registersToMaybeSave.push_back(value);
-  codegen_->GenerateStubCheckAndSwapCode(array, registersToMaybeSave, locations);
+  registersToMaybeSave.push_back(stubReg);
+  codegen_->GenerateStubCheckAndSwapCode(array, stubReg, registersToMaybeSave, locations);
 
   if (!needs_write_barrier) {
     DCHECK(!may_need_runtime_call_for_type_check);
@@ -2393,7 +2418,8 @@ void InstructionCodeGeneratorARM64::VisitArraySet(HArraySet* instruction) {
   // situation where the code generated by MarkGCCard() marks an object when it
   // should mark a stub.
   codegen_->GenerateSetWriteBitAndDirtyBit(array);
-  codegen_->GenerateRestoreStub(array);
+  codegen_->GenerateRestoreStub(array, stubReg);
+  codegen_->GenerateMaybeUnlockTableEntry(stubReg);
 }
 
 void LocationsBuilderARM64::VisitBoundsCheck(HBoundsCheck* instruction) {
@@ -3235,10 +3261,12 @@ void InstructionCodeGeneratorARM64::VisitInstanceOf(HInstanceOf* instruction) {
     __ Cbz(obj, &zero);
   }
 
+  Register stubReg(vixl::x20);
   std::vector<CPURegister> registersToMaybeSave;
   registersToMaybeSave.push_back(obj);
   registersToMaybeSave.push_back(cls);
-  codegen_->GenerateStubCheckAndSwapCode(obj, registersToMaybeSave, locations);
+  registersToMaybeSave.push_back(stubReg);
+  codegen_->GenerateStubCheckAndSwapCode(obj, stubReg, registersToMaybeSave, locations);
 
   // /* HeapReference<Class> */ out = obj->klass_
   GenerateReferenceLoadTwoRegisters(instruction, out_loc, obj_loc, class_offset, maybe_temp_loc);
@@ -3356,8 +3384,9 @@ void InstructionCodeGeneratorARM64::VisitInstanceOf(HInstanceOf* instruction) {
   }
 
   if (obj.code() != out.code()) {
-    codegen_->GenerateRestoreStub(obj);
+    codegen_->GenerateRestoreStub(obj, stubReg);
   }
+  codegen_->GenerateMaybeUnlockTableEntry(stubReg);
 
   if (zero.IsLinked()) {
     __ Bind(&zero);
@@ -3439,10 +3468,12 @@ void InstructionCodeGeneratorARM64::VisitCheckCast(HCheckCast* instruction) {
     __ Cbz(obj, &done);
   }
 
+  Register stubReg(vixl::x20);
   std::vector<CPURegister> registersToMaybeSave;
   registersToMaybeSave.push_back(obj);
   registersToMaybeSave.push_back(cls);
-  codegen_->GenerateStubCheckAndSwapCode(obj, registersToMaybeSave, locations);
+  registersToMaybeSave.push_back(stubReg);
+  codegen_->GenerateStubCheckAndSwapCode(obj, stubReg, registersToMaybeSave, locations);
 
   // /* HeapReference<Class> */ temp = obj->klass_
   GenerateReferenceLoadTwoRegisters(instruction, temp_loc, obj_loc, class_offset, maybe_temp2_loc);
@@ -3569,7 +3600,8 @@ void InstructionCodeGeneratorARM64::VisitCheckCast(HCheckCast* instruction) {
       __ B(type_check_slow_path->GetEntryLabel());
       break;
   }
-  codegen_->GenerateRestoreStub(obj);
+  codegen_->GenerateRestoreStub(obj, stubReg);
+  codegen_->GenerateMaybeUnlockTableEntry(stubReg);
   __ Bind(&done);
 
   __ Bind(type_check_slow_path->GetExitLabel());
@@ -3621,10 +3653,13 @@ void InstructionCodeGeneratorARM64::VisitInvokeInterface(HInvokeInterface* invok
   Offset class_offset = mirror::Object::ClassOffset();
   Offset entry_point = ArtMethod::EntryPointFromQuickCompiledCodeOffset(kArm64WordSize);
 
+  Register stubReg(vixl::x20);
   std::vector<CPURegister> registersToMaybeSave;
   CHECK(receiver.IsRegister());
   registersToMaybeSave.push_back(XRegisterFrom(receiver));
+  registersToMaybeSave.push_back(stubReg);
   codegen_->GenerateStubCheckAndSwapCode(XRegisterFrom(receiver),
+                                         stubReg,
                                          registersToMaybeSave,
                                          locations);
 
@@ -3662,7 +3697,8 @@ void InstructionCodeGeneratorARM64::VisitInvokeInterface(HInvokeInterface* invok
   // lr = temp->GetEntryPoint();
   __ Ldr(lr, MemOperand(temp, entry_point.Int32Value()));
   // Added by Niel: put stub back into object register before branching
-  codegen_->GenerateRestoreStub(XRegisterFrom(receiver));
+  codegen_->GenerateRestoreStub(XRegisterFrom(receiver), stubReg);
+  codegen_->GenerateMaybeUnlockTableEntry(stubReg);
   // lr();
   __ Blr(lr);
   DCHECK(!codegen_->IsLeafMethod());
@@ -3852,7 +3888,7 @@ void CodeGeneratorARM64::GenerateUnlockReclamationTableEntry(Register tableEntry
   Store(Primitive::kPrimBoolean, temp, MemOperand(tableEntryReg, 1));
 }
 
-void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
+void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg, Register stubReg,
       const std::vector<CPURegister> & registersToMaybeSave, LocationSummary * locations) {
   UseScratchRegisterScope temps(GetVIXLAssembler());
   vixl::Label stubCheckDoneLabel;
@@ -3864,8 +3900,11 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   // code 0
   Register temp = temps.AcquireX();
   CHECK(temp.code() != 0);
-  Register temp2 = temps.AcquireW();
-  CHECK(temp2.code() != 0);
+
+  // Zero out stubReg, so that we'll know whether we need to replace the object
+  // with a stub in GenerateRestoreStub()
+  Register zeroReg(kZeroRegCode, 64);
+  __ Mov(stubReg, zeroReg);
 
   // Read stub flag of object
   Load(Primitive::kPrimBoolean, temp.W(), MemOperand(objectReg, 8)); // temp now holds flags byte
@@ -3878,10 +3917,10 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   Load(Primitive::kPrimLong, temp, MemOperand(objectReg, 0)); // temp now holds table_entry_
 
   // Lock reclamation table entry
-  GenerateLockReclamationTableEntry(temp, temp2);
+  GenerateLockReclamationTableEntry(temp, stubReg);
 
-  // Put a back-pointer to the stub in the reclamation table entry
-  Store(Primitive::kPrimInt, objectReg.W(), MemOperand(temp, 8));
+  // Zero out stubReg again, since we used it as a temp reg above
+  __ Mov(stubReg, zeroReg);
 
   // Load object address from reclamation table entry
   Load(Primitive::kPrimInt, temp.W(), MemOperand(temp, 4)); // temp now holds table_entry_->object_address_
@@ -3905,15 +3944,16 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
 
   __ Bind(&swapDoneLabel);
 
-  // Store stub address in the object header so that GenerateRestoreStub() can
-  // restore it later.
+  // Load the address of the swapped-in object into temp.
   //
   // Note: this code might be confusing because the register named objectReg
   // actually contains the stub address right now, and the register named temp
   // will hold the address of the corresponding real object.
   Load(Primitive::kPrimLong, temp, MemOperand(objectReg, 0)); // temp now holds table_entry_
   Load(Primitive::kPrimInt, temp.W(), MemOperand(temp, 4)); // temp now holds table_entry_->object_address_
-  Store(Primitive::kPrimInt, objectReg.W(), MemOperand(temp, 12));
+
+  // Store stub address in stubReg so that we can restore it later
+  __ Mov(stubReg.W(), objectReg);
 
   // Replace stub pointer in register with pointer to swapped-in object
   __ Mov(objectReg, temp);
@@ -3921,79 +3961,29 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   __ Bind(&stubCheckDoneLabel);
 }
 
-void CodeGeneratorARM64::GenerateRestoreStub(Register objectReg) {
+void CodeGeneratorARM64::GenerateRestoreStub(Register objectReg, Register stubReg) {
+  vixl::Label doneLabel;
+
+  __ Cbz(stubReg, &doneLabel);
+  __ Mov(objectReg.W(), stubReg.W());
+  __ Bind(&doneLabel);
+}
+
+void CodeGeneratorARM64::GenerateMaybeUnlockTableEntry(Register stubReg) {
   UseScratchRegisterScope temps(GetVIXLAssembler());
   vixl::Label doneLabel;
 
-  Register temp = temps.AcquireX();
+  Register temp = temps.AcquireW();
   CHECK(temp.code() != 0);
 
-  /*
-   * We're going to do some terrible things here, due to the fact that we need
-   * two registers for the decrement that we have to perform as part of
-   * unlocking the reclamation table entry, but the compiler sometimes only has
-   * one temp register free when this method is called. Specifically, we're
-   * going to use this method's objectReg as the temp register for the unlock
-   * operation, and we're going to use this method's temp register as the table
-   * entry register for the unlock operation. We have to use objectReg as the
-   * temp register because the table entry register has to be 64 bits wide, and
-   * objectReg is only guaranteed to be a 32-bit register. Using objectReg in
-   * this way is fine because we can recover the stub address from the table
-   * entry after performing the unlock operation.
-   *
-   * This is the plan:
-   * 1. Load the object header's padding word into the temp register.
-   * 2. Check if the padding word is a stub address, and if not, skip the
-   * remaining steps.
-   * 3. Move the stub address into the objectReg register.
-   * 4. Load the reclamation table entry address into the temp register.
-   * 5. Pass the temp register into GenerateUnlockReclamationTableEntry() as
-   * its tableEntryRegister argument, and pass in the objectReg register in as
-   * its temp argument (we have to use objectReg as the temp register there
-   * because our temp register in this method is the only one wide enough to
-   * hold the table entry address).
-   * 6. Use the back-pointer in the reclamation table entry to load the stub
-   * address into the objectReg register.
-   */
+  // Check if there is actually a stub address in stubReg
+  __ Cbz(stubReg, &doneLabel);
 
-  // Load the object's padding word and check if it is a stub address
-  Load(Primitive::kPrimInt, temp.W(), MemOperand(objectReg, 12)); // temp now holds the stub address
-  __ Cbz(temp, &doneLabel);
-
-  /*
-   * Previously, we zeroed out the object's padding word here, but I think that
-   * step both introduced a race condition and was unnecessary.
-   *
-   * The race condition: if two threads are accessing the same object at the
-   * same time, one thread might zero out the padding word while the second
-   * thread is in the process of reading the stub address from the padding word
-   * (but after that second thread did its initial check of whether the padding
-   * word is zero). As a result, the second thread would replace the object
-   * address with a null pointer.
-   *
-   * Why it was unnecessary: the only reason to zero out the object's padding
-   * word is to prevent compiled code from incorrectly replacing the object
-   * address with its stub's address in the future. But once we've created a
-   * stub for an object, we will always want to replace the object address with
-   * the stub address. It's true that the object might have an old stub address
-   * sitting in its padding word after a semi-space GC runs, but when the
-   * compiled code starts accessing that object through its stub, it will
-   * overwrite the padding word with the stub's new address, so there should
-   * never be a situation where the old stub address is accessed.
-   */
-
-  // Move stub address into objectReg
-  __ Mov(objectReg, temp.W()); // objectReg now holds the stub address
-
-  // Load reclamation table entry address from stub
-  Load(Primitive::kPrimLong, temp, MemOperand(objectReg, 0)); // temp now holds table_entry_
+  // Load table entry address into stubReg
+  Load(Primitive::kPrimLong, stubReg, MemOperand(stubReg, 0)); // stubReg now contains table_entry_
 
   // Unlock reclamation table entry
-  GenerateUnlockReclamationTableEntry(temp, objectReg.W()); // objectReg now holds garbage
-
-  // Load stub address into objectReg using the reclamation table entry's
-  // back-pointer
-  Load(Primitive::kPrimInt, objectReg.W(), MemOperand(temp, 8)); // objectReg now holds stub address
+  GenerateUnlockReclamationTableEntry(stubReg, temp);
 
   __ Bind(&doneLabel);
 }
@@ -4281,9 +4271,14 @@ void CodeGeneratorARM64::GenerateVirtualCall(HInvokeVirtual* invoke, Location te
   Offset class_offset = mirror::Object::ClassOffset();
   Offset entry_point = ArtMethod::EntryPointFromQuickCompiledCodeOffset(kArm64WordSize);
 
+  Register stubReg(vixl::x20);
   std::vector<CPURegister> registersToMaybeSave;
   registersToMaybeSave.push_back(receiver);
-  GenerateStubCheckAndSwapCode(receiver, registersToMaybeSave, invoke->GetLocations());
+  registersToMaybeSave.push_back(stubReg);
+  GenerateStubCheckAndSwapCode(receiver,
+                               stubReg,
+                               registersToMaybeSave,
+                               invoke->GetLocations());
 
   BlockPoolsScope block_pools(GetVIXLAssembler());
 
@@ -4303,7 +4298,8 @@ void CodeGeneratorARM64::GenerateVirtualCall(HInvokeVirtual* invoke, Location te
   // lr = temp->GetEntryPoint();
   __ Ldr(lr, MemOperand(temp, entry_point.SizeValue()));
   // Added by Niel: put stub back into object register before branching
-  GenerateRestoreStub(receiver);
+  GenerateRestoreStub(receiver, stubReg);
+  GenerateMaybeUnlockTableEntry(stubReg);
   // lr();
   __ Blr(lr);
 }

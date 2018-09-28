@@ -574,14 +574,20 @@ class CodeGeneratorARM64 : public CodeGenerator {
   // necessary and then replace the stub pointer in objectReg with a pointer
   // to the swapped-in object.
   void GenerateStubCheckAndSwapCode(vixl::Register objectReg,
+                                    vixl::Register stubReg,
                                     const std::vector<vixl::CPURegister> & registersToMaybeSave,
                                     LocationSummary * locations);
 
-  void GenerateRestoreStub(vixl::Register objectReg);
+  void GenerateRestoreStub(vixl::Register objectReg, vixl::Register stubReg);
 
   void GenerateUpdateStub(vixl::Register stubReg,
                           const std::vector<vixl::CPURegister> & registersToMaybeSave,
                           LocationSummary * locations);
+
+  // Generate code to check if stubReg is non-zero and, if it is, load and
+  // unlock its reclamation table entry. The generated code will overwrite
+  // stubReg.
+  void GenerateMaybeUnlockTableEntry(vixl::Register stubReg);
 
   // Identify which registers need to be saved on the stack before a procedure
   // call.
