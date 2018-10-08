@@ -82,6 +82,15 @@ long noSwapFlagTotalSize = 0;
 long notInSpaceTotalSize = 0;
 long notSwappableTypeTotalSize = 0;
 
+long numStubs = 0;
+
+// These numbers may duplicate the info from the cold object size numbers
+// tracked by variables above, but they let me more easily tweak which objects
+// are counted in the working set and add multiple definitions of "working set"
+// if necessary.
+long sizeWorkingSetRead = 0;
+long sizeWorkingSetWrite = 0;
+
 Histogram smallObjectPointerFracHist(10, 0, 1); // objects <=200 bytes
 Histogram largeObjectPointerFracHist(10, 0, 1); // objects >200 bytes
 Histogram readShiftRegHist(16, 0, 16);
@@ -196,6 +205,11 @@ void StartAccessCount(gc::collector::GarbageCollector * gc) {
     noSwapFlagTotalSize = 0;
     notInSpaceTotalSize = 0;
     notSwappableTypeTotalSize = 0;
+
+    numStubs = 0;
+
+    sizeWorkingSetRead = 0;
+    sizeWorkingSetWrite = 0;
 }
 
 void CountAccess(gc::collector::GarbageCollector * gc, mirror::Object * object) {
@@ -204,6 +218,7 @@ void CountAccess(gc::collector::GarbageCollector * gc, mirror::Object * object) 
     }
 
     if (object->GetStubFlag()) {
+        numStubs++;
         return;
     }
 
@@ -280,6 +295,13 @@ void CountAccess(gc::collector::GarbageCollector * gc, mirror::Object * object) 
         }
     }
 
+    if (wsrVal >= 2 || wasWritten) {
+        sizeWorkingSetWrite += objectSize;
+    }
+    if (rsrVal >= 2 || wasRead) {
+        sizeWorkingSetRead += objectSize;
+    }
+
     totalObjects += 1;
 }
 
@@ -317,6 +339,11 @@ void FinishAccessCount(gc::collector::GarbageCollector * gc) {
     LOG(INFO) << "NIEL size of swappable objects not in RosAlloc or large object space: "
               << notInSpaceTotalSize;
     LOG(INFO) << "NIEL size of swappable objects of invalid type: " << notSwappableTypeTotalSize;
+    LOG(INFO) << "NIEL num stubs " << numStubs;
+
+    LOG(INFO) << "NIEL read working set size: " << sizeWorkingSetRead;
+    LOG(INFO) << "NIEL write working set size: " << sizeWorkingSetWrite;
+
     LOG(INFO) << "NIEL pointer frac hist of small objects (scaled):\n"
               << smallObjectPointerFracHist.Print(true, true);
     LOG(INFO) << "NIEL pointer frac hist of large objects (scaled):\n"

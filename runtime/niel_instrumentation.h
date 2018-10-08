@@ -4,7 +4,7 @@
 #include "base/mutex.h"
 #include "globals.h"
 
-#define NIEL_INSTRUMENTATION_ENABLED false
+#define NIEL_INSTRUMENTATION_ENABLED true
 #define NIEL_ALLOCATOR_INST_ENABLED false
 
 /*

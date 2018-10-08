@@ -2773,6 +2773,8 @@ void Heap::LogGC(GcCause gc_cause, collector::GarbageCollector* collector) {
       log_gc = log_gc || pause >= long_pause_log_threshold_;
     }
   }
+  // Added by Niel: always display GC log message
+  log_gc = true;
   if (log_gc) {
     const size_t percent_free = GetPercentFree();
     const size_t current_heap_size = GetBytesAllocated();
