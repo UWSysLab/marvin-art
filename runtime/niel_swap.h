@@ -78,6 +78,11 @@ void SwapInOnDemand(Stub * stub) SHARED_REQUIRES(Locks::mutator_lock_);
  */
 void SetInForeground(bool inForeground);
 
+/*
+ * Set the app lock counter to 0 for every entry in the reclamation table.
+ */
+void UnlockAllReclamationTableEntries() REQUIRES(Locks::mutator_lock_);
+
 
 // Not a part of public swap API. Utility function that would be in
 // niel_common.h, except it needs to have access to the swappedInSpace.

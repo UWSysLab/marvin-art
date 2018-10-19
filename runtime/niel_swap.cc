@@ -698,6 +698,10 @@ void FreeFromLargeObjectSpace(Thread * self, gc::Heap * heap, mirror::Object * o
     heap->RecordFree(1, objSize);
 }
 
+void UnlockAllReclamationTableEntries() {
+    recTable.UnlockAllEntries();
+}
+
 void SwapObjectsOut(Thread * self, gc::Heap * heap) {
     if (!swapEnabled) {
         return;

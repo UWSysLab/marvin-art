@@ -1,6 +1,8 @@
 #ifndef ART_RUNTIME_NIEL_RECLAMATION_TABLE_H_
 #define ART_RUNTIME_NIEL_RECLAMATION_TABLE_H_
 
+#include "base/mutex.h"
+
 #include <atomic>
 #include <stddef.h>
 #include <stdint.h>
@@ -69,6 +71,10 @@ class TableEntry {
         app_lock_counter_--;
     }
 
+    void ZeroAppLockCounter() {
+        app_lock_counter_ = 0;
+    }
+
     uint16_t GetNumPages() {
         return num_pages_;
     }
@@ -117,6 +123,7 @@ class ReclamationTable {
     TableEntry * CreateEntry();
     void FreeEntry(TableEntry * entry);
     bool IsValid();
+    void UnlockAllEntries() REQUIRES(Locks::mutator_lock_);
     void DebugPrint();
 
   private:

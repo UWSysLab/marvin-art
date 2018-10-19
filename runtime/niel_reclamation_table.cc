@@ -46,6 +46,16 @@ bool ReclamationTable::IsValid() {
     return base_address_ != nullptr;
 }
 
+void ReclamationTable::UnlockAllEntries() {
+    TableEntry * curEntry = Begin();
+    while (curEntry < End()) {
+        if (curEntry->GetOccupiedBit()) {
+            curEntry->ZeroAppLockCounter();
+        }
+        curEntry++;
+    }
+}
+
 void ReclamationTable::DebugPrint() {
     LOG(INFO) << "NIELDEBUG ReclamationTable base_address_" << base_address_
               << " num_entries_ " << num_entries_;
