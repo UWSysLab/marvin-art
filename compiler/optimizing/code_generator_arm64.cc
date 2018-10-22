@@ -3239,6 +3239,7 @@ void InstructionCodeGeneratorARM64::VisitInstanceOf(HInstanceOf* instruction) {
   registersToMaybeSave.push_back(obj);
   registersToMaybeSave.push_back(cls);
   codegen_->GenerateStubCheckAndSwapCode(obj, registersToMaybeSave, locations);
+  codegen_->GenerateSetReadBit(obj);
 
   // /* HeapReference<Class> */ out = obj->klass_
   GenerateReferenceLoadTwoRegisters(instruction, out_loc, obj_loc, class_offset, maybe_temp_loc);
@@ -3443,6 +3444,7 @@ void InstructionCodeGeneratorARM64::VisitCheckCast(HCheckCast* instruction) {
   registersToMaybeSave.push_back(obj);
   registersToMaybeSave.push_back(cls);
   codegen_->GenerateStubCheckAndSwapCode(obj, registersToMaybeSave, locations);
+  codegen_->GenerateSetReadBit(obj);
 
   // /* HeapReference<Class> */ temp = obj->klass_
   GenerateReferenceLoadTwoRegisters(instruction, temp_loc, obj_loc, class_offset, maybe_temp2_loc);
@@ -3627,6 +3629,7 @@ void InstructionCodeGeneratorARM64::VisitInvokeInterface(HInvokeInterface* invok
   codegen_->GenerateStubCheckAndSwapCode(XRegisterFrom(receiver),
                                          registersToMaybeSave,
                                          locations);
+  codegen_->GenerateSetReadBit(XRegisterFrom(receiver));
 
   // The register ip1 is required to be used for the hidden argument in
   // art_quick_imt_conflict_trampoline, so prevent VIXL from using it.
@@ -4288,6 +4291,7 @@ void CodeGeneratorARM64::GenerateVirtualCall(HInvokeVirtual* invoke, Location te
   std::vector<CPURegister> registersToMaybeSave;
   registersToMaybeSave.push_back(receiver);
   GenerateStubCheckAndSwapCode(receiver, registersToMaybeSave, invoke->GetLocations());
+  GenerateSetReadBit(receiver);
 
   BlockPoolsScope block_pools(GetVIXLAssembler());
 
