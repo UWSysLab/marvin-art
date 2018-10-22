@@ -4230,16 +4230,20 @@ void CodeGeneratorARM64::GenerateSetReadBit(Register objectReg) {
   CHECK(temp.code() != 0);
 
   int flagsOffset = 8;
-  int ignoreReadFlagOffset = 1; // within x_flags_ byte
   int readBitOffset = 3; // within x_flags_ byte
 
   // We need to use a separate register because LDARB does not support the
   // "base plus offset" addressing mode
   __ Add(flagsReg, objectReg, flagsOffset);
 
-  __ Ldarb(temp, MemOperand(flagsReg)); // temp now holds x_flags_ byte
-  __ And(temp, temp, (0x1 << ignoreReadFlagOffset)); // temp now holds AND result
-  __ Cbnz(temp, &doneLabel);
+  /*
+   * Previously, we checked the value of the IgnoreReadFlag in the object
+   * header's x_flags_ byte here and skipped setting the read bit if it was
+   * set, but I don't think there is any reason to do that check here. The
+   * IgnoreReadFlag is only used to make sure the read bit is not set by reads
+   * performed by the GC, and the GC code is all native runtime code, not
+   * compiled OAT code.
+   */
 
   __ Ldarb(temp, MemOperand(flagsReg)); // temp now holds x_flags_ byte
   __ Orr(temp, temp, (0x1 << readBitOffset));
