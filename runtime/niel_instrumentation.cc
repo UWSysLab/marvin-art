@@ -219,6 +219,10 @@ void CountAccess(gc::collector::GarbageCollector * gc, mirror::Object * object) 
 
     if (object->GetStubFlag()) {
         numStubs++;
+        niel::swap::Stub * stub = (niel::swap::Stub *)object;
+        if (stub->GetObjectAddress() != nullptr) {
+            CountAccess(gc, stub->GetObjectAddress());
+        }
         return;
     }
 
