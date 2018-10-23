@@ -1278,33 +1278,33 @@ inline void Object::VisitReferences(const Visitor& visitor,
 }
 
 inline bool Object::GetIgnoreReadFlag() {
-  return (bool)GetBitsAtomic8(x_flags_, 1, 1, std::memory_order_relaxed);
+  return (bool)GetBits8(x_access_bits_, 0, 1);
 }
 inline void Object::SetIgnoreReadFlag() {
-  SetBitsAtomic8(x_flags_, 1, 1, std::memory_order_relaxed);
+  SetBits8(&x_access_bits_, 0, 1);
 }
 inline void Object::ClearIgnoreReadFlag() {
-  ClearBitsAtomic8(x_flags_, 1, 1, std::memory_order_relaxed);
+  ClearBits8(&x_access_bits_, 0, 1);
 }
 
 inline bool Object::GetWriteBit() {
-  return (bool)GetBitsAtomic8(x_flags_, 4, 1, std::memory_order_acquire);
+  return (bool)GetBits8(x_access_bits_, 2, 1);
 }
 inline void Object::SetWriteBit() {
-  SetBitsAtomic8(x_flags_, 4, 1, std::memory_order_acq_rel);
+  SetBits8(&x_access_bits_, 2, 1);
 }
 inline void Object::ClearWriteBit() {
-  ClearBitsAtomic8(x_flags_, 4, 1, std::memory_order_acq_rel);
+  ClearBits8(&x_access_bits_, 2, 1);
 }
 
 inline bool Object::GetReadBit() {
-  return (bool)GetBitsAtomic8(x_flags_, 3, 1, std::memory_order_acquire);
+  return (bool)GetBits8(x_access_bits_, 1, 1);
 }
 inline void Object::SetReadBit() {
-  SetBitsAtomic8(x_flags_, 3, 1, std::memory_order_acq_rel);
+  SetBits8(&x_access_bits_, 1, 1);
 }
 inline void Object::ClearReadBit() {
-  ClearBitsAtomic8(x_flags_, 3, 1, std::memory_order_acq_rel);
+  ClearBits8(&x_access_bits_, 1, 1);
 }
 
 inline uint8_t Object::GetWriteShiftRegister() {
@@ -1326,13 +1326,13 @@ inline void Object::UpdateReadShiftRegister(bool read) {
 }
 
 inline bool Object::GetDirtyBit() {
-  return (bool)GetBitsAtomic8(x_flags_, 0, 1, std::memory_order_acquire);
+  return (bool)x_dirty_bit_.load(std::memory_order_acquire);
 }
 inline void Object::SetDirtyBit() {
-  SetBitsAtomic8(x_flags_, 0, 1, std::memory_order_acq_rel);
+  x_dirty_bit_.store(1, std::memory_order_release);
 }
 inline void Object::ClearDirtyBit() {
-  ClearBitsAtomic8(x_flags_, 0, 1, std::memory_order_acq_rel);
+  x_dirty_bit_.store(0, std::memory_order_release);
 }
 
 inline bool Object::GetStubFlag() const {

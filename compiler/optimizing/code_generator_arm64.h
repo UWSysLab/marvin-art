@@ -612,23 +612,24 @@ class CodeGeneratorARM64 : public CodeGenerator {
   void GenerateRestoreRegisters(const std::vector<vixl::CPURegister> & savedRegisters);
 
   /*
-   * The two methods below generate code to set different bits in the
-   * object header's x_flags_ byte. Ideally, these bits should be set
-   * atomically with acquire-release semantics using the AArch64 instruction
-   * LDEORALB, but VIXL does not appear to have support for LDEORALB. The
-   * current implementation generates code that loads and stores the x_flags_
-   * byte with acquire-release semantics but does not perform the update
-   * atomically.
+   * The two methods below generate code to set bits in the object header's
+   * x_access_bits_ byte. Ideally, these bits should be set in one atomic
+   * operation with acquire-release semantics using the AArch64 instruction
+   * LDEORALB, but VIXL does not appear to have support for LDEORALB, and
+   * operations with strong memory ordering semantics also have a high
+   * performance cost. The current implementation generates code that loads and
+   * stores the x_access_bits_ byte in separate instructions without any memory
+   * ordering guarantees.
    *
-   * The current implementation could result in a correctness issue where an
-   * object's dirty bit is set and then incorrectly cleared due to a concurrent
-   * update of the object's read bit or write bit. (Updates to other bits in
-   * the x_flags_ header could be lost as well, but due to the nature of the
-   * other flags and where they are used, I think that the worst thing that
-   * might happen in practice is that reads may be incorrectly ignored/not
-   * ignored due to lost updates to the IgnoreReadFlag.)
-   *
-   * TODO: Change these methods to use LDEORALB to perform updates atomically.
+   * The current implementation could result in errors in read/write set
+   * tracking if multiple threads perform different operations on the same
+   * object at the same time (e.g., if one thread reads from an object while
+   * another thread writes to that object or updates its IgnoreReadFlag, and
+   * the instructions operating on x_access_bits_ from the two threads are
+   * interleaved, one of the changes to x_access_bits_ could be lost). As a
+   * result, our read/write set tracking should be considered best-effort. In
+   * practice, the read/write set tracking seems to be giving accurate results
+   * when running on synthetic test apps with known object access patterns.
    */
 
   // Generate code to check the IgnoreReadFlag of an object, and if it is not

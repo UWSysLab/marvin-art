@@ -179,12 +179,20 @@ class MANAGED LOCKABLE Object {
    * Current layout of added header bytes:
    *
    * x_flags_:
-   * 7|65|4|3|2|1|0
-   * s|--|w|r|n|i|d
+   * 7|6543|2|10
+   * s|----|n|--
    *
    * x_shift_regs_:
    * 7654|3210
    * rsr |wsr
+   *
+   * x_dirty_bit_:
+   * 7654321|0
+   * -------|d
+   *
+   * x_access_bits_:
+   * 76543|2|1|0
+   * -----|w|r|i
    *
    * s: stub flag
    * w: write bit
@@ -741,12 +749,12 @@ class MANAGED LOCKABLE Object {
   uint32_t monitor_;
 
   // Names use 'x' prefix for the same reason that the Brooks variables defined
-  // below do. See the comment at line 154 in this file for info about the
+  // below do. See the block comment near the top of this file for info about the
   // layout of these variables.
   std::atomic<uint8_t> x_flags_;
   uint8_t x_shift_regs_;
-  uint8_t x_padding_b_;
-  uint8_t x_padding_c_;
+  std::atomic<uint8_t> x_dirty_bit_;
+  uint8_t x_access_bits_;
   uint32_t x_padding_;
 
 #ifdef USE_BROOKS_READ_BARRIER

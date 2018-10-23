@@ -4227,17 +4227,11 @@ void CodeGeneratorARM64::GenerateSetReadBit(Register objectReg) {
   UseScratchRegisterScope temps(GetVIXLAssembler());
   vixl::Label doneLabel;
 
-  Register flagsReg = temps.AcquireW();
   Register temp = temps.AcquireW();
-  CHECK(flagsReg.code() != 0);
   CHECK(temp.code() != 0);
 
-  int flagsOffset = 8;
-  int readBitOffset = 3; // within x_flags_ byte
-
-  // We need to use a separate register because LDARB does not support the
-  // "base plus offset" addressing mode
-  __ Add(flagsReg, objectReg, flagsOffset);
+  int accessBitsByteOffset = 11;
+  int readBitOffset = 1; // within x_access_bits_ byte
 
   /*
    * Previously, we checked the value of the IgnoreReadFlag in the object
@@ -4248,31 +4242,34 @@ void CodeGeneratorARM64::GenerateSetReadBit(Register objectReg) {
    * compiled OAT code.
    */
 
-  __ Ldarb(temp, MemOperand(flagsReg)); // temp now holds x_flags_ byte
+  __ Ldrb(temp, MemOperand(objectReg, accessBitsByteOffset)); // temp now holds x_access_bits_ byte
   __ Orr(temp, temp, (0x1 << readBitOffset));
-  __ Stlrb(temp, MemOperand(flagsReg));
+  __ Strb(temp, MemOperand(objectReg, accessBitsByteOffset));
 
   __ Bind(&doneLabel);
 }
 
 void CodeGeneratorARM64::GenerateSetWriteBitAndDirtyBit(Register objectReg) {
   UseScratchRegisterScope temps(GetVIXLAssembler());
-  Register flagsReg = temps.AcquireW();
+  Register dirtyBitByteReg = temps.AcquireW();
   Register temp = temps.AcquireW();
-  CHECK(flagsReg.code() != 0);
+  CHECK(dirtyBitByteReg.code() != 0);
   CHECK(temp.code() != 0);
 
-  int flagsOffset = 8;
-  int writeBitOffset = 4; // within x_flags_ byte
+  int accessBitsByteOffset = 11;
+  int writeBitOffset = 2; // within x_access_bits_ byte
 
-  // We need to use a separate register because LDARB does not support the
+  int dirtyBitByteOffset = 10;
+
+  __ Ldrb(temp, MemOperand(objectReg, accessBitsByteOffset));
+  __ Orr(temp, temp, (0x1 << writeBitOffset));
+  __ Strb(temp, MemOperand(objectReg, accessBitsByteOffset));
+
+  // We need to use a separate register because STLRB does not support the
   // "base plus offset" addressing mode
-  __ Add(flagsReg, objectReg, flagsOffset);
-
-  __ Ldarb(temp, MemOperand(flagsReg));
-  __ Orr(temp, temp, (0x1 << writeBitOffset)); // set write bit
-  __ Orr(temp, temp, 0x1); // set dirty bit
-  __ Stlrb(temp, MemOperand(flagsReg));
+  __ Add(dirtyBitByteReg, objectReg, dirtyBitByteOffset);
+  __ Mov(temp, 0x1);
+  __ Stlrb(temp, MemOperand(dirtyBitByteReg));
 }
 
 void CodeGeneratorARM64::GenerateVirtualCall(HInvokeVirtual* invoke, Location temp_in) {
