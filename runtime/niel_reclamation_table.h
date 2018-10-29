@@ -23,6 +23,20 @@ const unsigned int KERNEL_LOCK_BIT_OFFSET = 2;
 
 class TableEntry {
   public:
+    void LockFromAppThread() {
+        while (GetKernelLockBit()) {
+            continue;
+        }
+        IncrAppLockCounter();
+        while (GetKernelLockBit()) {
+            continue;
+        }
+    }
+
+    void UnlockFromAppThread() {
+        DecrAppLockCounter();
+    }
+
     bool GetOccupiedBit() {
         return GetBit(OCCUPIED_BIT_OFFSET);
     }

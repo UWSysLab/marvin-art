@@ -735,10 +735,16 @@ void SemiSpace::ScanObject(Object* obj) {
   if (obj->GetStubFlag()) {
     niel::swap::Stub * stub = (niel::swap::Stub *)obj;
 
+    // TODO: Figure out whether this code is necessary. (Don't we keep the
+    // stub's references updated whenever the object's references change,
+    // making this code redundant if we're going to mark the stub's references
+    // right afterwards?)
+    stub->LockTableEntry();
     if (stub->GetObjectAddress() != nullptr) {
         MarkObjectVisitor visitor(this);
         stub->GetObjectAddress()->VisitReferences(visitor, visitor);
     }
+    stub->UnlockTableEntry();
 
     for (int i = 0; i < stub->GetNumRefs(); i++) {
       mirror::Object * rawRef = stub->GetReference(i);

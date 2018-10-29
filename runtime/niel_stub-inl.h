@@ -72,17 +72,11 @@ inline size_t Stub::GetSize() {
 }
 
 inline void Stub::LockTableEntry() {
-    while(GetTableEntry()->GetKernelLockBit()) {
-        continue;
-    }
-    GetTableEntry()->IncrAppLockCounter();
-    while (GetTableEntry()->GetKernelLockBit()) {
-        continue;
-    }
+    GetTableEntry()->LockFromAppThread();
 }
 
 inline void Stub::UnlockTableEntry() {
-    GetTableEntry()->DecrAppLockCounter();
+    GetTableEntry()->UnlockFromAppThread();
 }
 
 

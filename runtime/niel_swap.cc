@@ -69,6 +69,9 @@ int writeToSwapFile(Thread * self, gc::Heap * heap, mirror::Object * object, boo
 /*
  * Allocates space for the object in memory and copies the object from the swap
  * file into memory.
+ *
+ * NOTE: The caller of this method is responsible for locking and unlocking the
+ * stub's RTE.
  */
 mirror::Object * swapInObject(Thread * self, Stub * stub, std::streampos objOffset,
                               size_t objSize)
@@ -154,12 +157,12 @@ std::map<void *, void *> semiSpaceRemappingTable; //TODO: combine with normal re
 // not yet have a stub, the object itself's pointer will be in this set.
 std::set<mirror::Object *> swapOutSet;
 // Used during semi-space GC to track which stubs are associated with which
-// objects. If a stub was freed by the semi-space GC instead of being
-// forwarded, this map is used to free its corresponding object in
+// RTEs. If a stub was freed by the semi-space GC instead of being
+// forwarded, this map is used to free its corresponding RTE/object in
 // replaceDataStructurePointers(). At the beginning of a semi-space GC run,
 // this map should contain every live stub as a key, and at the end of the run,
 // this map should be empty.
-std::map<Stub *, mirror::Object *> stubObjectMap;
+std::map<Stub *, TableEntry *> stubRTEMap;
 bool swappingOutObjects = false;
 bool doingSwapInCleanup = false;
 int bgMarkSweepCounter = 0;
@@ -349,7 +352,12 @@ int writeToSwapFile(Thread * self, gc::Heap * heap, mirror::Object * object, boo
     Stub * stub = nullptr;
     if (object->GetStubFlag()) {
         stub = (Stub *)object;
+        stub->LockTableEntry();
         object = stub->GetObjectAddress();
+
+        // An object being written to the swap file is dirty and therefore
+        // should never be reclaimed before writeToSwapFile() finishes running
+        // on it.
         CHECK(object != nullptr);
     }
 
@@ -456,6 +464,10 @@ int writeToSwapFile(Thread * self, gc::Heap * heap, mirror::Object * object, boo
         }
         free(objectData);
     }
+    if (stub != nullptr) {
+        stub->GetTableEntry()->ClearDirtyBit();
+        stub->UnlockTableEntry();
+    }
     return result;
 }
 
@@ -535,10 +547,22 @@ void PatchCallback(void * start, void * end ATTRIBUTE_UNUSED, size_t num_bytes,
     mirror::Object * obj = (mirror::Object *)start;
     if (obj->GetStubFlag()) {
         Stub * stub = (Stub *)obj;
+
+        // I am pretty sure the code below is unnecessary and risks introducing
+        // correctness issues. We only use the remapping table when first
+        // creating a stub for an object, to remap all the pointers that
+        // previously pointed to the object to point to its stub. The stub
+        // itself will point to its corresponding object in the swappedInSpace,
+        // and we don't want to remap that pointer to anything.
+        //
+        // TODO: Make sure this code is unnecessary and remove it.
+        stub->LockTableEntry();
         mirror::Object * swappedInObj = stub->GetObjectAddress();
         if (remappingTable.count(swappedInObj)) {
             stub->SetObjectAddress((mirror::Object *)remappingTable[swappedInObj]);
         }
+        stub->UnlockTableEntry();
+
         for (int i = 0; i < stub->GetNumRefs(); i++) {
             mirror::Object * ref = stub->GetReference(i);
             if (remappingTable.count(ref)) {
@@ -638,16 +662,20 @@ void replaceDataStructurePointers(Thread * self, const std::map<void *, void *> 
             objectSizeMap.erase(*it);
         }
 
-        for (auto it = stubObjectMap.begin(); it != stubObjectMap.end(); it++) {
+        for (auto it = stubRTEMap.begin(); it != stubRTEMap.end(); it++) {
             Stub * stub = it->first;
-            mirror::Object * obj = it->second;
+            TableEntry * rte = it->second;
             if (!addrTable.count(stub)) {
+                rte->LockFromAppThread();
+                mirror::Object * obj = rte->GetObjectAddress();
                 if (obj != nullptr) {
                     swappedInSpace->Free(self, obj);
                 }
+                rte->ClearOccupiedBit();
+                rte->UnlockFromAppThread();
             }
         }
-        stubObjectMap.clear();
+        stubRTEMap.clear();
 
         // No need to remove pointers from these data structures, since they
         // should be empty during a semi-space GC.
@@ -683,6 +711,14 @@ void UnlockAllReclamationTableEntries() {
     recTable.UnlockAllEntries();
 }
 
+// NOTE: This method currently does not do any RTE locking/unlocking, because
+// it mixes functionality that is always performed by the runtime in our design
+// (creating stubs and remapping object pointers to point to those stubs) with
+// functionality that would theoretically be performed by the kernel (freeing
+// checkpointed objects from memory). I want to wait until I separate out those
+// two types of functionality before adding RTE locking/unlocking.
+//
+// TODO: add RTE locking/unlocking if necessary.
 void SwapObjectsOut(Thread * self, gc::Heap * heap) {
     if (!swapEnabled) {
         return;
@@ -835,12 +871,12 @@ void SemiSpaceRecordStubMappings(Thread * self) {
     //
     // TODO: Think about whether this assumption is correct.
     swapFileMapsMutex.SharedLock(self);
-    CHECK_EQ(stubObjectMap.size(), 0u);
+    CHECK_EQ(stubRTEMap.size(), 0u);
     for (auto it = objectOffsetMap.begin(); it != objectOffsetMap.end(); it++) {
         mirror::Object * obj = (mirror::Object *)it->first;
         if (obj->GetStubFlag()) {
             Stub * stub = (Stub *)obj;
-            stubObjectMap[stub] = stub->GetObjectAddress();
+            stubRTEMap[stub] = stub->GetTableEntry();
         }
     }
     swapFileMapsMutex.SharedUnlock(self);
@@ -930,10 +966,12 @@ void SwapObjectsIn(gc::Heap * heap) {
             size_t objSize = objectSizeMap[stub];
 
             // Only swap in object if it wasn't already swapped in on-demand
+            stub->LockTableEntry();
             mirror::Object * swappedInObj = stub->GetObjectAddress();
             if (swappedInObj == nullptr) {
                 swappedInObj = swapInObject(self, stub, objOffset, objSize);
             }
+            stub->UnlockTableEntry();
         }
     }
     swapFileMapsMutex.SharedUnlock(self);
@@ -994,11 +1032,14 @@ void GcRecordFree(Thread * self, mirror::Object * object) {
 
     if (object->GetStubFlag()) {
         Stub * stub = (Stub *)object;
+        stub->LockTableEntry();
         mirror::Object * swappedInObj = stub->GetObjectAddress();
         if (swappedInObj != nullptr) {
             CHECK(swappedInSpace->Contains(swappedInObj));
             swappedInSpace->Free(self, swappedInObj);
         }
+        stub->GetTableEntry()->ClearOccupiedBit();
+        stub->UnlockTableEntry();
     }
 }
 
@@ -1229,8 +1270,10 @@ void CheckAndUpdate(gc::collector::GarbageCollector * gc, mirror::Object * objec
     Stub * stub = nullptr;
     if (object->GetStubFlag()) {
         stub = (Stub *)object;
+        stub->LockTableEntry();
         object = stub->GetObjectAddress();
         if (object == nullptr) {
+            stub->UnlockTableEntry();
             return;
         }
     }
@@ -1298,6 +1341,10 @@ void CheckAndUpdate(gc::collector::GarbageCollector * gc, mirror::Object * objec
 
     object->UpdateReadShiftRegister(wasRead);
     object->UpdateWriteShiftRegister(wasWritten);
+
+    if (stub != nullptr) {
+        stub->UnlockTableEntry();
+    }
 }
 
 void validateSwapFile(Thread * self) {
