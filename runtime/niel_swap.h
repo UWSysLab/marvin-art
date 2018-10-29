@@ -48,10 +48,15 @@ void CheckAndUpdate(gc::collector::GarbageCollector * gc, mirror::Object * objec
 void SwapObjectsIn(gc::Heap * heap) REQUIRES(Locks::mutator_lock_);
 
 /*
- * Swap all objects in the swapOutQueue out to disk by replacing them with
- * stubs, freeing them from memory, patching references to point to the stubs
- * rather than the objects, and remapping the swap data structures to use
- * pointers to the stubs.
+ * Create stubs for all "swap candidate" objects that do not already have
+ * stubs, move the objects into a separate memory space, patch references to
+ * point to the stubs rather than the objects, and remap the swap data
+ * structures to use pointers to the stubs.
+ */
+void CreateStubs(Thread * self, gc::Heap * heap) REQUIRES(Locks::mutator_lock_);
+
+/*
+ * Reclaim (free from memory) all objects that have stubs.
  */
 void SwapObjectsOut(Thread * self, gc::Heap * heap) REQUIRES(Locks::mutator_lock_);
 

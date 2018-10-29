@@ -151,11 +151,9 @@ Mutex swapFileMutex("SwapFileMutex", kLoggingLock);
 uint32_t pid = 0;
 std::map<void *, void *> remappingTable;
 std::map<void *, void *> semiSpaceRemappingTable; //TODO: combine with normal remapping table?
-// Holds the set of objects that will be freed, and for which stubs will be
-// created if necessary, on the next call to SwapObjectsOut(). If an object has
-// a stub already, the stub's pointer will be in this set; if the object does
-// not yet have a stub, the object itself's pointer will be in this set.
-std::set<mirror::Object *> swapOutSet;
+// Holds the set of "swap candidate" objects that do not already have stubs.
+// On the next call to CreateStubs(), stubs will be created for these objects.
+std::set<mirror::Object *> createStubSet;
 // Used during semi-space GC to track which stubs are associated with which
 // RTEs. If a stub was freed by the semi-space GC instead of being
 // forwarded, this map is used to free its corresponding RTE/object in
@@ -163,7 +161,7 @@ std::set<mirror::Object *> swapOutSet;
 // this map should contain every live stub as a key, and at the end of the run,
 // this map should be empty.
 std::map<Stub *, TableEntry *> stubRTEMap;
-bool swappingOutObjects = false;
+bool creatingStubs = false;
 bool doingSwapInCleanup = false;
 int bgMarkSweepCounter = 0;
 int freedObjects = 0;
@@ -663,7 +661,7 @@ void replaceDataStructurePointers(Thread * self, const std::map<void *, void *> 
 
         // No need to remove pointers from these data structures, since they
         // should be empty during a semi-space GC.
-        CHECK_EQ(swapOutSet.size(), 0u);
+        CHECK_EQ(createStubSet.size(), 0u);
         CHECK_EQ(writeQueue.size(), 0u);
         CHECK_EQ(writeSet.size(), 0u);
     }
@@ -695,128 +693,88 @@ void UnlockAllReclamationTableEntries() {
     recTable.UnlockAllEntries();
 }
 
-// NOTE: This method currently does not do any RTE locking/unlocking, because
-// it mixes functionality that is always performed by the runtime in our design
-// (creating stubs and remapping object pointers to point to those stubs) with
-// functionality that would theoretically be performed by the kernel (freeing
-// checkpointed objects from memory). I want to wait until I separate out those
-// two types of functionality before adding RTE locking/unlocking.
-//
-// TODO: add RTE locking/unlocking if necessary.
-void SwapObjectsOut(Thread * self, gc::Heap * heap) {
+void CreateStubs(Thread * self, gc::Heap * heap) {
     if (!swapEnabled) {
         return;
     }
 
     CHECK(remappingTable.size() == 0);
 
-    // Remove any object from swapOutSet whose NoSwapFlag was set since it was
+    // Remove any object from createStubSet whose NoSwapFlag was set since it was
     // added (currently, this only happens because the object was marked for
     // exclusion)
     std::set<mirror::Object *> removeSet;
-    for (auto it = swapOutSet.begin(); it != swapOutSet.end(); it++) {
+    for (auto it = createStubSet.begin(); it != createStubSet.end(); it++) {
         mirror::Object * obj = *it;
-
-        bool noSwap = false;
-        if (obj->GetStubFlag()) {
-            Stub * stub = (Stub *)obj;
-            CHECK(stub->GetObjectAddress() != nullptr);
-            noSwap = stub->GetObjectAddress()->GetNoSwapFlag();
-        }
-        else {
-            noSwap = obj->GetNoSwapFlag();
-        }
-
-        if (noSwap) {
+        if (obj->GetNoSwapFlag()) {
             removeSet.insert(obj);
         }
     }
     for (auto it = removeSet.begin(); it != removeSet.end(); it++) {
-        swapOutSet.erase(*it);
+        createStubSet.erase(*it);
     }
 
-    // Make sure all objects in swapOutSet have been written to the swap file
-    for (auto it = swapOutSet.begin(); it != swapOutSet.end(); it++) {
+    creatingStubs = true;
+    for (auto it = createStubSet.begin(); it != createStubSet.end(); it++) {
         mirror::Object * obj = *it;
 
-        bool isDirty = false;
-        if (obj->GetStubFlag()) {
-            Stub * stub = (Stub *)obj;
-            CHECK(stub->GetObjectAddress() != nullptr);
-            isDirty = stub->GetObjectAddress()->GetDirtyBit();
-        }
-        else {
-            isDirty = obj->GetDirtyBit();
-        }
-
-        if (isDirty) {
-            bool ioError = false;
-            int writeResult = writeToSwapFile(self, heap, obj, &ioError);
-            if (ioError || writeResult != SWAPFILE_WRITE_OK) {
-                LOG(ERROR) << "NIELERROR error writing object during SwapObjectsOut; result: "
-                           << writeResult << " ioError: " << ioError;
-            }
-        }
-    }
-
-    swappingOutObjects = true;
-    for (auto it = swapOutSet.begin(); it != swapOutSet.end(); it++) {
-        mirror::Object * obj = *it;
-
-        Stub * stub = nullptr;
-        if (obj->GetStubFlag()) {
-            stub = (Stub *)obj;
-            obj = stub->GetObjectAddress();
-        }
-
+        CHECK(!obj->GetStubFlag());
         CHECK(objectInSwappableSpace(heap, obj));
 
-        // Only allocate a new stub for this object if the object does not
-        // already have a stub.
-        if (stub == nullptr) {
-            size_t stubSize = Stub::GetStubSize(obj);
-            size_t bytes_allocated;
-            size_t usable_size;
-            size_t bytes_tl_bulk_allocated;
-            mirror::Object * stubData = heap->GetRosAllocSpace()
-                                             ->Alloc(self,
-                                                     stubSize,
-                                                     &bytes_allocated,
-                                                     &usable_size,
-                                                     &bytes_tl_bulk_allocated);
-            CHECK(stubData != nullptr);
-            stub = (Stub *)stubData;
-            TableEntry * entry = recTable.CreateEntry();
-            stub->SetTableEntry(entry);
-            stub->PopulateFrom(obj);
-
-            if (heap->GetLargeObjectsSpace()->Contains(obj)) {
-                stub->SetLargeObjectFlag();
-            }
-
-            remappingTable[obj] = stub;
+        // Create the stub for this object
+        size_t stubSize = Stub::GetStubSize(obj);
+        size_t bytes_allocated;
+        size_t usable_size;
+        size_t bytes_tl_bulk_allocated;
+        mirror::Object * stubData = heap->GetRosAllocSpace()
+                                         ->Alloc(self,
+                                                 stubSize,
+                                                 &bytes_allocated,
+                                                 &usable_size,
+                                                 &bytes_tl_bulk_allocated);
+        CHECK(stubData != nullptr);
+        Stub * stub = (Stub *)stubData;
+        TableEntry * entry = recTable.CreateEntry();
+        stub->SetTableEntry(entry);
+        stub->LockTableEntry();
+        stub->PopulateFrom(obj);
+        if (heap->GetLargeObjectsSpace()->Contains(obj)) {
+            stub->SetLargeObjectFlag();
         }
 
-        stub->SetObjectAddress(nullptr);
+        // Copy the object into the swappedInSpace
+        obj->SetIgnoreReadFlag();
+        size_t objSize = obj->SizeOf();
+        obj->ClearIgnoreReadFlag();
+        mirror::Object * objCopy = swappedInSpace->Alloc(self,
+                                                         objSize,
+                                                         &bytes_allocated,
+                                                         &usable_size,
+                                                         &bytes_tl_bulk_allocated);
+        CHECK(objCopy != nullptr);
+        std::memcpy(objCopy, obj, objSize);
 
+        // Free the original copy of the object
         if (heap->GetLargeObjectsSpace()->Contains(obj)) {
             FreeFromLargeObjectSpace(self, heap, obj);
         }
         else if (heap->GetRosAllocSpace()->Contains(obj)) {
             FreeFromRosAllocSpace(self, heap, obj);
         }
-        else if (swappedInSpace->Contains(obj)) {
-            swappedInSpace->FreeList(self, 1, &obj);
-        }
         else {
-            LOG(FATAL) << "NIELERROR object " << obj << " not in any space";
+            LOG(FATAL) << "NIELERROR object " << obj << " not in RosAlloc space or LOS";
         }
+
+        // Do bookkeeping
+        remappingTable[obj] = stub;
+        stub->SetObjectAddress(objCopy);
+        stub->UnlockTableEntry();
     }
 
     patchStubReferences(self, heap);
     remappingTable.clear();
-    swapOutSet.clear();
-    swappingOutObjects = false;
+    createStubSet.clear();
+    creatingStubs = false;
 
     // Clear the write queue (and write set), since after the semi-space GC
     // runs, the pointers in the write queue will be invalid
@@ -824,6 +782,60 @@ void SwapObjectsOut(Thread * self, gc::Heap * heap) {
     writeQueue.clear();
     writeSet.clear();
     writeQueueMutex.ExclusiveUnlock(self);
+}
+
+// NOTE: This method currently does not do any RTE locking/unlocking, because
+// it implements the memory-reclaiming functionality that would be performed by
+// the OS according to our design.
+void SwapObjectsOut(Thread * self, gc::Heap * heap) {
+    // Compile the set of stubs whose objects will be swapped out.
+    //
+    // Like SemiSpaceRecordStubMappings(), this code assumes that all stubs
+    // appear as keys in objectOffsetMap/objectSizeMap.
+    //
+    // TODO: Think about whether this assumption is correct.
+    std::set<Stub *> swapOutSet;
+    swapFileMapsMutex.SharedLock(self);
+    for (auto it = objectOffsetMap.begin(); it != objectOffsetMap.end(); it++) {
+        mirror::Object * obj = (mirror::Object *)it->first;
+        if (obj->GetStubFlag()) {
+            swapOutSet.insert((Stub *)obj);
+        }
+    }
+    swapFileMapsMutex.SharedUnlock(self);
+
+    // Make sure all objects corresponding to stubs in in swapOutSet have been
+    // written to the swap file
+    for (auto it = swapOutSet.begin(); it != swapOutSet.end(); it++) {
+        Stub * stub = *it;
+
+        bool isDirty = false;
+        if (stub->GetObjectAddress() != nullptr) {
+            isDirty = stub->GetObjectAddress()->GetDirtyBit();
+        }
+
+        if (isDirty) {
+            bool ioError = false;
+            int writeResult = writeToSwapFile(self, heap, (mirror::Object *)stub, &ioError);
+            if (ioError || writeResult != SWAPFILE_WRITE_OK) {
+                LOG(ERROR) << "NIELERROR error writing object during SwapObjectsOut; result: "
+                           << writeResult << " ioError: " << ioError;
+            }
+        }
+    }
+
+    // Free the objects corresponding to each stub in swapOutSet
+    for (auto it = swapOutSet.begin(); it != swapOutSet.end(); it++) {
+        Stub * stub = *it;
+        mirror::Object * swappedInObj = stub->GetObjectAddress();
+        if (swappedInObj != nullptr) {
+            CHECK(swappedInSpace->Contains(swappedInObj));
+            swappedInSpace->FreeList(self, 1, &swappedInObj);
+            stub->SetObjectAddress(nullptr);
+        }
+    }
+
+    swapOutSet.clear();
 }
 
 void RecordForwardedObject(Thread * self, mirror::Object * obj, mirror::Object * forwardAddress) {
@@ -976,7 +988,7 @@ void GcRecordFree(Thread * self, mirror::Object * object) {
      *    methods that free objects or stubs as part of swapping (currently,
      *    the only such method is SwapObjectsOut()).
      */
-    if (swappingOutObjects) {
+    if (creatingStubs) {
         return;
     }
 
@@ -1004,8 +1016,8 @@ void GcRecordFree(Thread * self, mirror::Object * object) {
     }
     swapFileMapsMutex.ExclusiveUnlock(self);
 
-    if (swapOutSet.count(object)) {
-        swapOutSet.erase(object);
+    if (createStubSet.count(object)) {
+        createStubSet.erase(object);
     }
 
     if (object->GetStubFlag()) {
@@ -1298,7 +1310,9 @@ void CheckAndUpdate(gc::collector::GarbageCollector * gc, mirror::Object * objec
     }
 
     if (shouldSwap) {
-        swapOutSet.insert(bookkeepingKey);
+        if (stub == nullptr) {
+            createStubSet.insert(object);
+        }
         if (object->GetDirtyBit()) {
             Thread * self = Thread::Current();
             writeQueueMutex.ExclusiveLock(self);
