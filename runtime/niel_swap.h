@@ -61,6 +61,14 @@ void SwapObjectsOut(Thread * self, gc::Heap * heap) REQUIRES(Locks::mutator_lock
 void RecordForwardedObject(Thread * self, mirror::Object * obj, mirror::Object * forwardAddress);
 
 /*
+ * Iterate through all live stubs and record the objects to which they point.
+ * This information is used to free those objects if their corresponding stubs
+ * not forwarded by the semi-space GC. This method should be called before
+ * running the semi-space GC.
+ */
+void SemiSpaceRecordStubMappings(Thread * self) REQUIRES(Locks::mutator_lock_);
+
+/*
  * Update bookkeeping data structures to have correct pointers after
  * semi-space GC.
  */
