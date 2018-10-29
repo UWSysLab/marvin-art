@@ -547,22 +547,6 @@ void PatchCallback(void * start, void * end ATTRIBUTE_UNUSED, size_t num_bytes,
     mirror::Object * obj = (mirror::Object *)start;
     if (obj->GetStubFlag()) {
         Stub * stub = (Stub *)obj;
-
-        // I am pretty sure the code below is unnecessary and risks introducing
-        // correctness issues. We only use the remapping table when first
-        // creating a stub for an object, to remap all the pointers that
-        // previously pointed to the object to point to its stub. The stub
-        // itself will point to its corresponding object in the swappedInSpace,
-        // and we don't want to remap that pointer to anything.
-        //
-        // TODO: Make sure this code is unnecessary and remove it.
-        stub->LockTableEntry();
-        mirror::Object * swappedInObj = stub->GetObjectAddress();
-        if (remappingTable.count(swappedInObj)) {
-            stub->SetObjectAddress((mirror::Object *)remappingTable[swappedInObj]);
-        }
-        stub->UnlockTableEntry();
-
         for (int i = 0; i < stub->GetNumRefs(); i++) {
             mirror::Object * ref = stub->GetReference(i);
             if (remappingTable.count(ref)) {
@@ -789,13 +773,7 @@ void SwapObjectsOut(Thread * self, gc::Heap * heap) {
 
         // Only allocate a new stub for this object if the object does not
         // already have a stub.
-        if (stub != nullptr) {
-            //TODO: remove the line below after adding stub updates
-            stub->PopulateFrom(obj);
-            //TODO: remove the line below after implementing stub restoration in compiled code
-            remappingTable[obj] = stub;
-        }
-        else {
+        if (stub == nullptr) {
             size_t stubSize = Stub::GetStubSize(obj);
             size_t bytes_allocated;
             size_t usable_size;
