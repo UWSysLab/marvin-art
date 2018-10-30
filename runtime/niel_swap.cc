@@ -38,6 +38,7 @@ const uint64_t WRITE_TASK_FG_MAX_DURATION = 300000000; // ns
 const uint64_t WRITE_TASK_BG_MAX_DURATION = 300000000; // ns
 const uint64_t WRITE_TASK_FG_WAIT_TIME = 3000000000; // ns
 const uint64_t WRITE_TASK_BG_WAIT_TIME = 10000000000; // ns
+const uint64_t WRITE_TASK_STARTUP_DELAY = 6000000000; // ns
 const uintptr_t SWAPPED_IN_SPACE_START = 0xc0000000;
 const uint64_t SWAPPED_IN_SPACE_SIZE = 512 * 1024 * 1024; // bytes
 const uint64_t REC_TABLE_NUM_ENTRIES = 50000;
@@ -1111,7 +1112,8 @@ void InitIfNecessary(Thread * self) {
     }
 
     swapEnabled = true;
-    taskProcessor->AddTask(Thread::Current(), new WriteTask(NanoTime()));
+    uint64_t targetTime = NanoTime() + WRITE_TASK_STARTUP_DELAY;
+    taskProcessor->AddTask(Thread::Current(), new WriteTask(targetTime));
 
     LOG(INFO) << "NIEL successfully initialized swap for package " << packageName;
 }
