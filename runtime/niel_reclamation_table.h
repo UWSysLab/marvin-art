@@ -18,8 +18,7 @@ namespace niel {
 namespace swap {
 
 const unsigned int OCCUPIED_BIT_OFFSET = 0;
-const unsigned int DIRTY_BIT_OFFSET = 1;
-const unsigned int KERNEL_LOCK_BIT_OFFSET = 2;
+const unsigned int KERNEL_LOCK_BIT_OFFSET = 1;
 
 class TableEntry {
   public:
@@ -47,18 +46,6 @@ class TableEntry {
 
     void ClearOccupiedBit() {
         ClearBit(OCCUPIED_BIT_OFFSET);
-    }
-
-    bool GetDirtyBit() {
-        return GetBit(DIRTY_BIT_OFFSET);
-    }
-
-    void SetDirtyBit() {
-        SetBit(DIRTY_BIT_OFFSET);
-    }
-
-    void ClearDirtyBit() {
-        ClearBit(DIRTY_BIT_OFFSET);
     }
 
     bool GetKernelLockBit() {
@@ -134,6 +121,8 @@ class ReclamationTable {
   public:
     static ReclamationTable CreateTable(int numEntries);
     ReclamationTable() : base_address_(nullptr), num_entries_(0) { }
+    // CreateEntry() is not thread-safe. Callers should ensure that only one
+    // thread at a time calls it.
     TableEntry * CreateEntry();
     void FreeEntry(TableEntry * entry);
     bool IsValid();

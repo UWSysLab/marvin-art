@@ -40,6 +40,7 @@ const uint64_t WRITE_TASK_FG_WAIT_TIME = 3000000000; // ns
 const uint64_t WRITE_TASK_BG_WAIT_TIME = 10000000000; // ns
 const uintptr_t SWAPPED_IN_SPACE_START = 0xc0000000;
 const uint64_t SWAPPED_IN_SPACE_SIZE = 512 * 1024 * 1024; // bytes
+const uint64_t REC_TABLE_NUM_ENTRIES = 50000;
 
 // Return values of writeToSwapFile().
 const int SWAPFILE_WRITE_OK = 0;
@@ -189,10 +190,8 @@ bool swapEnabled = false;
 gc::space::LargeObjectSpace * swappedInSpace = nullptr;
 
 /*
- * Not locked
- *
- * TODO: Add assumption that ReclamationTable::CreateEntry() will only be
- * called by the heap task thread?
+ * Not locked. This object's CreateEntry() method should only be called by the
+ * heap task thread.
  */
 ReclamationTable recTable;
 
@@ -463,7 +462,6 @@ int writeToSwapFile(Thread * self, gc::Heap * heap, mirror::Object * object, boo
         free(objectData);
     }
     if (stub != nullptr) {
-        stub->GetTableEntry()->ClearDirtyBit();
         stub->UnlockTableEntry();
     }
     return result;
@@ -768,6 +766,11 @@ void CreateStubs(Thread * self, gc::Heap * heap) {
         // Do bookkeeping
         remappingTable[obj] = stub;
         stub->SetObjectAddress(objCopy);
+        int numPages = objSize / kPageSize;
+        if (objSize % kPageSize > 0) {
+            numPages += 1;
+        }
+        stub->GetTableEntry()->SetNumPages(numPages);
         stub->UnlockTableEntry();
     }
 
@@ -1101,7 +1104,7 @@ void InitIfNecessary(Thread * self) {
         }
     }
 
-    recTable = ReclamationTable::CreateTable(50000);
+    recTable = ReclamationTable::CreateTable(REC_TABLE_NUM_ENTRIES);
     if (!recTable.IsValid()) {
         LOG(ERROR) << "NIELERROR error creating reclamation table";
         return;

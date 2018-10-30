@@ -30,6 +30,14 @@ TableEntry * ReclamationTable::CreateEntry() {
     TableEntry * curEntry = Begin();
     while (curEntry < End()) {
         if (!curEntry->GetOccupiedBit()) {
+            // The correctness of this RTE initialization code depends on these
+            // assumptions:
+            // A) The OS never touches any RTE where the occupied bit is 0.
+            // B) Only one app thread at a time calls CreateEntry().
+            CHECK(curEntry->GetKernelLockBit() == 0);
+            curEntry->ZeroAppLockCounter();
+            curEntry->SetNumPages(0);
+            curEntry->SetObjectAddress(nullptr);
             curEntry->SetOccupiedBit();
             return curEntry;
         }
@@ -62,7 +70,6 @@ void ReclamationTable::DebugPrint() {
     for (TableEntry * curEntry = Begin(); curEntry < End(); curEntry++) {
         LOG(INFO) << "NIELDEBUG " << curEntry
                   << "|" << curEntry->GetOccupiedBit()
-                  << "|" << curEntry->GetDirtyBit()
                   << "|" << curEntry->GetKernelLockBit()
                   << "|" << (int)curEntry->GetAppLockCounter()
                   << "|" << curEntry->GetNumPages()
