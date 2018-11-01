@@ -697,6 +697,8 @@ void CreateStubs(Thread * self, gc::Heap * heap) {
         return;
     }
 
+    ScopedTimer timer("creating stubs");
+
     CHECK(remappingTable.size() == 0);
 
     // Remove any object from createStubSet whose NoSwapFlag was set since it was
@@ -792,6 +794,12 @@ void CreateStubs(Thread * self, gc::Heap * heap) {
 // it implements the memory-reclaiming functionality that would be performed by
 // the OS according to our design.
 void SwapObjectsOut(Thread * self, gc::Heap * heap) {
+    if (!swapEnabled) {
+        return;
+    }
+
+    ScopedTimer timer("swapping objects out");
+
     // Compile the set of stubs whose objects will be swapped out.
     //
     // Like SemiSpaceRecordStubMappings(), this code assumes that all stubs

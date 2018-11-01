@@ -75,6 +75,7 @@
 #include "well_known_classes.h"
 
 #include "niel_instrumentation.h"
+#include "niel_scoped_timer.h"
 
 namespace art {
 
@@ -955,6 +956,7 @@ void Heap::UpdateProcessState(ProcessState old_process_state, ProcessState new_p
         // deleted while the GC is still using it. I think the code below blocks until any
         // in-progress GC completes, but I'm not sure if it is the best/most correct way of
         // doing so (it is based on code in Heap::PerformHomogeneousSpaceCompact()).
+        niel::ScopedTimer timer("swap-in pause");
         Thread * self = Thread::Current();
         ScopedThreadStateChange stsc(self, kWaitingForGcToComplete);
         MutexLock mu(self, *gc_complete_lock_);
