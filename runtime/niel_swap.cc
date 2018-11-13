@@ -816,6 +816,24 @@ void SwapObjectsOut(Thread * self, gc::Heap * heap) {
     }
     swapFileMapsMutex.SharedUnlock(self);
 
+    // Remove stubs from the swapOutSet if their corresponding objects are not
+    // cold (using the same criteria from CheckAndUpdate()).
+    std::set<Stub *> removeSet;
+    for (auto it = swapOutSet.begin(); it != swapOutSet.end(); it++) {
+            Stub * stub = *it;
+            mirror::Object * objFromStub = stub->GetObjectAddress();
+            if (objFromStub != nullptr) {
+                uint8_t wsrVal = objFromStub->GetWriteShiftRegister();
+                bool wasWritten = objFromStub->GetWriteBit();
+                if (!objectIsCold(wsrVal, wasWritten)) {
+                    removeSet.insert(stub);
+                }
+            }
+    }
+    for (auto it = removeSet.begin(); it != removeSet.end(); it++) {
+        swapOutSet.erase(*it);
+    }
+
     // Make sure all objects corresponding to stubs in in swapOutSet have been
     // written to the swap file
     for (auto it = swapOutSet.begin(); it != swapOutSet.end(); it++) {
