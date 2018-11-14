@@ -348,6 +348,7 @@ void FinishAccessCount(gc::collector::GarbageCollector * gc) {
     LOG(INFO) << "NIEL read working set size: " << sizeWorkingSetRead;
     LOG(INFO) << "NIEL write working set size: " << sizeWorkingSetWrite;
 
+/*
     LOG(INFO) << "NIEL pointer frac hist of small objects (scaled):\n"
               << smallObjectPointerFracHist.Print(true, true);
     LOG(INFO) << "NIEL pointer frac hist of large objects (scaled):\n"
@@ -360,6 +361,7 @@ void FinishAccessCount(gc::collector::GarbageCollector * gc) {
               << writeShiftRegVsPointerFracHist.Print(false);
     LOG(INFO) << "NIEL object size vs pointer frac hist:\n"
               << objectSizeVsPointerFracHist.Print(false);
+*/
 }
 
 void maybePrintLog() {
