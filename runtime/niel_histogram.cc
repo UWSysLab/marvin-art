@@ -4,6 +4,8 @@
 #include <iomanip>
 #include <sstream>
 
+#include "base/logging.h"
+
 namespace art {
 
 namespace niel {
@@ -35,7 +37,7 @@ void Histogram::Add(double num) {
     AddMultiple(num, 1);
 }
 void Histogram::AddMultiple(double num, long count) {
-    int binIndex = (int)std::floor(((num - min_) * numBins_) / (max_ - min_));
+    int binIndex = GetBinIndex(num);
     if (binIndex < 0) {
         belowMin_ += count;
     }
@@ -74,7 +76,6 @@ double Histogram::GetAverage() {
 
 std::string Histogram::Print(bool scaled, bool separateLines) {
     long count = Count();
-    double binWidth = (max_ - min_) / numBins_;
 
     std::string delim = (separateLines ? NEWLINE_DELIM_ : SPACE_DELIM_);
 
@@ -96,8 +97,8 @@ std::string Histogram::Print(bool scaled, bool separateLines) {
     output << delim;
 
     for (int i = 0; i < numBins_; i++) {
-        double binStart = min_ + i * binWidth;
-        double binEnd = min_ + (i + 1) * binWidth;
+        double binStart = GetBinStart(i);
+        double binEnd = GetBinEnd(i);
         output << BIN_FMT << "[" << binStart << "," << binEnd << "): ";
         if (scaled) {
             output << SCALED_NUM_FMT;
@@ -129,6 +130,44 @@ std::string Histogram::Print(bool scaled, bool separateLines) {
     }
 
     return output.str();
+}
+
+LinearHistogram::LinearHistogram(int numBins, double min, double max)
+    : Histogram(numBins, min, max) { }
+
+int LinearHistogram::GetBinIndex(double num) {
+    return (int)std::floor(((num - min_) * numBins_) / (max_ - min_));
+}
+
+double LinearHistogram::GetBinStart(int binIndex) {
+    double binWidth = (max_ - min_) / numBins_;
+    double binStart = min_ + binIndex * binWidth;
+    return binStart;
+}
+
+double LinearHistogram::GetBinEnd(int binIndex) {
+    double binWidth = (max_ - min_) / numBins_;
+    double binEnd = min_ + (binIndex + 1) * binWidth;
+    return binEnd;
+}
+
+LogHistogram::LogHistogram(double base, int minPower, int maxPower)
+    : Histogram((maxPower - minPower), std::pow(base, minPower), std::pow(base, maxPower)),
+      base_(base)
+    {
+        CHECK(base > 1);
+    }
+
+int LogHistogram::GetBinIndex(double num) {
+    return std::floor(std::log(num / min_) / std::log(base_));
+}
+
+double LogHistogram::GetBinStart(int binIndex) {
+    return min_ * std::pow(base_, binIndex);
+}
+
+double LogHistogram::GetBinEnd(int binIndex) {
+    return min_ * std::pow(base_, binIndex + 1);
 }
 
 } // namespace inst

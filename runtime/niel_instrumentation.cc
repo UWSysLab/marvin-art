@@ -91,10 +91,10 @@ long numStubs = 0;
 long sizeWorkingSetRead = 0;
 long sizeWorkingSetWrite = 0;
 
-Histogram smallObjectPointerFracHist(10, 0, 1); // objects <=200 bytes
-Histogram largeObjectPointerFracHist(10, 0, 1); // objects >200 bytes
-Histogram readShiftRegHist(16, 0, 16);
-Histogram writeShiftRegHist(16, 0, 16);
+LinearHistogram smallObjectPointerFracHist(10, 0, 1); // objects <=200 bytes
+LinearHistogram largeObjectPointerFracHist(10, 0, 1); // objects >200 bytes
+LinearHistogram readShiftRegHist(16, 0, 16);
+LinearHistogram writeShiftRegHist(16, 0, 16);
 
 BivariateHistogram readShiftRegVsPointerFracHist(16, 0, 16, 10, 0, 1);
 BivariateHistogram writeShiftRegVsPointerFracHist(16, 0, 16, 10, 0, 1);
