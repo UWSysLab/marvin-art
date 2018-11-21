@@ -91,6 +91,10 @@ long numStubs = 0;
 long sizeWorkingSetRead = 0;
 long sizeWorkingSetWrite = 0;
 
+LogHistogram objectSizeHist(2, 4, 25);
+LogHistogram objectSizeTotalMemoryCounts(2, 4, 25);
+LogHistogram pointerFrac100KBObjectHist(1.5, -40, -23);
+
 LinearHistogram smallObjectPointerFracHist(10, 0, 1); // objects <=200 bytes
 LinearHistogram largeObjectPointerFracHist(10, 0, 1); // objects >200 bytes
 LinearHistogram readShiftRegHist(16, 0, 16);
@@ -190,6 +194,10 @@ void StartAccessCount(gc::collector::GarbageCollector * gc) {
     largeObjectTotalObjectSize = 0;
     largeObjectTotalPointerSize = 0;
 
+    objectSizeHist.Clear();
+    objectSizeTotalMemoryCounts.Clear();
+    pointerFrac100KBObjectHist.Clear();
+
     smallObjectPointerFracHist.Clear();
     largeObjectPointerFracHist.Clear();
     readShiftRegHist.Clear();
@@ -275,6 +283,12 @@ void CountAccess(gc::collector::GarbageCollector * gc, mirror::Object * object) 
     uint8_t rsrVal = object->GetReadShiftRegister();
     uint8_t wsrVal = object->GetWriteShiftRegister();
 
+    objectSizeHist.Add(objectSize);
+    objectSizeTotalMemoryCounts.AddMultiple(objectSize, objectSize);
+    if (objectSize >= 100 * 1024) {
+        pointerFrac100KBObjectHist.Add(pointerSizeFrac);
+    }
+
     readShiftRegHist.Add(rsrVal);
     writeShiftRegHist.Add(wsrVal);
 
@@ -347,6 +361,14 @@ void FinishAccessCount(gc::collector::GarbageCollector * gc) {
 
     LOG(INFO) << "NIEL read working set size: " << sizeWorkingSetRead;
     LOG(INFO) << "NIEL write working set size: " << sizeWorkingSetWrite;
+
+/*
+    LOG(INFO) << "NIEL object size hist (scaled): \n" << objectSizeHist.Print(true, true);
+    LOG(INFO) << "NIEL object size total memory counts (scaled): \n"
+              << objectSizeTotalMemoryCounts.Print(true, true);
+    LOG(INFO) << "NIEL pointer frac hist of objects >= 100KB (scaled):\n"
+              << pointerFrac100KBObjectHist.Print(true, true);
+*/
 
 /*
     LOG(INFO) << "NIEL pointer frac hist of small objects (scaled):\n"

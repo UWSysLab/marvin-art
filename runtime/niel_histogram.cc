@@ -13,7 +13,7 @@ namespace niel {
 namespace inst {
 
 #define BIN_FMT std::defaultfloat << std::setprecision(6)
-#define SCALED_NUM_FMT std::fixed << std::setprecision(3)
+#define SCALED_NUM_FMT std::fixed << std::setprecision(6)
 
 const std::string Histogram::NEWLINE_DELIM_("\n");
 const std::string Histogram::SPACE_DELIM_(" ");
