@@ -31,6 +31,13 @@ namespace niel {
 
 namespace swap {
 
+// Commercial app compatibility mode excludes all objects from being swapped
+// and makes the swapped-in space smaller (to avoid colliding with other mmap'd
+// regions). This mode is used to evaluate the overhead of Marvin without the
+// inexplicable crashes that occur when objects are moved/reclaimed in
+// commercial apps.
+#define COMMERCIAL_APP_COMPAT_MODE false
+
 /* Constants */
 const double COMPACT_THRESHOLD = 0.25;
 const int BG_MARK_SWEEPS_BEFORE_SEMI_SPACE = 4;
@@ -39,9 +46,13 @@ const uint64_t WRITE_TASK_BG_MAX_DURATION = 300000000; // ns
 const uint64_t WRITE_TASK_FG_WAIT_TIME = 5000000000; // ns
 const uint64_t WRITE_TASK_BG_WAIT_TIME = 30000000000; // ns
 const uint64_t WRITE_TASK_STARTUP_DELAY = 6000000000; // ns
-const uintptr_t SWAPPED_IN_SPACE_START = 0xc0000000;
-const uint64_t SWAPPED_IN_SPACE_SIZE = 512 * 1024 * 1024; // bytes
 const uint64_t REC_TABLE_NUM_ENTRIES = 50000;
+const uintptr_t SWAPPED_IN_SPACE_START = 0xc0000000;
+#if COMMERCIAL_APP_COMPAT_MODE
+const uint64_t SWAPPED_IN_SPACE_SIZE = 1 * 1024 * 1024; // bytes
+#else
+const uint64_t SWAPPED_IN_SPACE_SIZE = 512 * 1024 * 1024; // bytes
+#endif
 
 // Return values of writeToSwapFile().
 const int SWAPFILE_WRITE_OK = 0;
@@ -131,9 +142,9 @@ void patchStubReferences(Thread * self, gc::Heap * heap) REQUIRES(Locks::mutator
  * excluded from being swapped out. The caller is responsible for setting and
  * clearing the object's IgnoreReadFlag before and after calling this function.
  *
- * Note: currently, this method does not exclude any objects from being swapped
- * out, but I am leaving this code path in place in case we need to exclude
- * objects in the future.
+ * Note: currently, this method is used to exclude all objects from being
+ * swapped when running in "commercial app compatibility mode." Otherwise, it
+ * does not exclude any objects.
  */
 bool shouldExcludeObjectAndMembers(mirror::Object * obj) SHARED_REQUIRES(Locks::mutator_lock_);
 
@@ -469,7 +480,11 @@ int writeToSwapFile(Thread * self, gc::Heap * heap, mirror::Object * object, boo
 }
 
 bool shouldExcludeObjectAndMembers(mirror::Object * obj ATTRIBUTE_UNUSED) {
+#if COMMERCIAL_APP_COMPAT_MODE
+    return true;
+#else
     return false;
+#endif
 }
 
 class ExcludeVisitor {
@@ -1142,6 +1157,8 @@ void InitIfNecessary(Thread * self) {
     taskProcessor->AddTask(Thread::Current(), new WriteTask(targetTime));
 
     LOG(INFO) << "NIEL successfully initialized swap for package " << packageName;
+    LOG(INFO) << "NIEL commercial app compat mode is "
+              << (COMMERCIAL_APP_COMPAT_MODE ? "enabled" : "disabled");
 }
 
 bool copyFile(const std::string & fromFileName, const std::string & toFileName) {
