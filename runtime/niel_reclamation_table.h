@@ -129,15 +129,16 @@ class ReclamationTable {
     void UnlockAllEntries() REQUIRES(Locks::mutator_lock_);
     void DebugPrint();
 
-  private:
-    ReclamationTable(void * base_address, size_t num_entries)
-            : base_address_((TableEntry *)base_address), num_entries_(num_entries) { }
     TableEntry * Begin() {
         return base_address_;
     }
     TableEntry * End() {
         return base_address_ + num_entries_;
     }
+
+  private:
+    ReclamationTable(void * base_address, size_t num_entries)
+            : base_address_((TableEntry *)base_address), num_entries_(num_entries) { }
 
     TableEntry * base_address_;
     size_t num_entries_;

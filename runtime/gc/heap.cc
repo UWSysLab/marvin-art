@@ -2079,7 +2079,7 @@ HomogeneousSpaceCompactResult Heap::PerformHomogeneousSpaceCompact() {
     ScopedSuspendAll ssa(__FUNCTION__);
     niel::swap::UnlockAllReclamationTableEntries();
     niel::swap::CreateStubs(self, this);
-    niel::swap::SwapObjectsOut(self, this);
+    niel::swap::SwapObjectsOut(self);
     uint64_t start_time = NanoTime();
     // Launch compaction.
     space::MallocSpace* to_space = main_space_backup_.release();

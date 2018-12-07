@@ -138,6 +138,14 @@ void validateSwapFile(Thread * self);
 void patchStubReferences(Thread * self, gc::Heap * heap) REQUIRES(Locks::mutator_lock_);
 
 /*
+ * Perform the checks that the kernel would need to perform when reclaiming an
+ * object. If the kernel lock bit is set on the RTE and this method returns
+ * true, then there is a valid object associated with this RTE, and it is safe
+ * to reclaim it.
+ */
+bool doKernelReclamationChecks(TableEntry * rte);
+
+/*
  * Determines whether an object and the objects referenced by it should be
  * excluded from being swapped out. The caller is responsible for setting and
  * clearing the object's IgnoreReadFlag before and after calling this function.
@@ -805,82 +813,57 @@ void CreateStubs(Thread * self, gc::Heap * heap) {
     writeQueueMutex.ExclusiveUnlock(self);
 }
 
-// NOTE: This method currently does not do any RTE locking/unlocking, because
-// it implements the memory-reclaiming functionality that would be performed by
-// the OS according to our design.
-void SwapObjectsOut(Thread * self, gc::Heap * heap) {
+bool doKernelReclamationChecks(TableEntry * rte) {
+    if (rte->GetOccupiedBit() == 0) {
+        return false;
+    }
+
+    if (rte->GetAppLockCounter() > 0) {
+        return false;
+    }
+
+    mirror::Object * obj = rte->GetObjectAddress();
+    if (obj == nullptr) {
+        return false;
+    }
+
+    bool isDirty = obj->GetDirtyBit();
+    if (isDirty) {
+        return false;
+    }
+
+    uint8_t wsrVal = obj->GetWriteShiftRegister();
+    bool wasWritten = obj->GetWriteBit();
+    if (!objectIsCold(wsrVal, wasWritten)) {
+        return false;
+    }
+
+    return true;
+}
+
+// NOTE: This method implements the memory-reclaiming functionality that would
+// be performed by the OS according to our design.
+void SwapObjectsOut(Thread * self) {
     if (!swapEnabled) {
         return;
     }
 
     ScopedTimer timer("swapping objects out");
 
-    // Compile the set of stubs whose objects will be swapped out.
-    //
-    // Like SemiSpaceRecordStubMappings(), this code assumes that all stubs
-    // appear as keys in objectOffsetMap/objectSizeMap.
-    //
-    // TODO: Think about whether this assumption is correct.
-    std::set<Stub *> swapOutSet;
-    swapFileMapsMutex.SharedLock(self);
-    for (auto it = objectOffsetMap.begin(); it != objectOffsetMap.end(); it++) {
-        mirror::Object * obj = (mirror::Object *)it->first;
-        if (obj->GetStubFlag()) {
-            swapOutSet.insert((Stub *)obj);
-        }
-    }
-    swapFileMapsMutex.SharedUnlock(self);
-
-    // Remove stubs from the swapOutSet if their corresponding objects are not
-    // cold (using the same criteria from CheckAndUpdate()).
-    std::set<Stub *> removeSet;
-    for (auto it = swapOutSet.begin(); it != swapOutSet.end(); it++) {
-            Stub * stub = *it;
-            mirror::Object * objFromStub = stub->GetObjectAddress();
-            if (objFromStub != nullptr) {
-                uint8_t wsrVal = objFromStub->GetWriteShiftRegister();
-                bool wasWritten = objFromStub->GetWriteBit();
-                if (!objectIsCold(wsrVal, wasWritten)) {
-                    removeSet.insert(stub);
-                }
+    for (TableEntry * rte = recTable.Begin(); rte < recTable.End(); rte++) {
+        bool firstCheck = doKernelReclamationChecks(rte);
+        if (firstCheck) {
+            rte->SetKernelLockBit();
+            bool secondCheck = doKernelReclamationChecks(rte);
+            if (secondCheck) {
+                mirror::Object * obj = rte->GetObjectAddress();
+                CHECK(swappedInSpace->Contains(obj));
+                swappedInSpace->FreeList(self, 1, &obj);
+                rte->SetObjectAddress(nullptr);
             }
-    }
-    for (auto it = removeSet.begin(); it != removeSet.end(); it++) {
-        swapOutSet.erase(*it);
-    }
-
-    // Make sure all objects corresponding to stubs in in swapOutSet have been
-    // written to the swap file
-    for (auto it = swapOutSet.begin(); it != swapOutSet.end(); it++) {
-        Stub * stub = *it;
-
-        bool isDirty = false;
-        if (stub->GetObjectAddress() != nullptr) {
-            isDirty = stub->GetObjectAddress()->GetDirtyBit();
-        }
-
-        if (isDirty) {
-            bool ioError = false;
-            int writeResult = writeToSwapFile(self, heap, (mirror::Object *)stub, &ioError);
-            if (ioError || writeResult != SWAPFILE_WRITE_OK) {
-                LOG(ERROR) << "NIELERROR error writing object during SwapObjectsOut; result: "
-                           << writeResult << " ioError: " << ioError;
-            }
+            rte->ClearKernelLockBit();
         }
     }
-
-    // Free the objects corresponding to each stub in swapOutSet
-    for (auto it = swapOutSet.begin(); it != swapOutSet.end(); it++) {
-        Stub * stub = *it;
-        mirror::Object * swappedInObj = stub->GetObjectAddress();
-        if (swappedInObj != nullptr) {
-            CHECK(swappedInSpace->Contains(swappedInObj));
-            swappedInSpace->FreeList(self, 1, &swappedInObj);
-            stub->SetObjectAddress(nullptr);
-        }
-    }
-
-    swapOutSet.clear();
 }
 
 void RecordForwardedObject(Thread * self, mirror::Object * obj, mirror::Object * forwardAddress) {
