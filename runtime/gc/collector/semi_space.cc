@@ -740,7 +740,7 @@ void SemiSpace::ScanObject(Object* obj) {
     // making this code redundant if we're going to mark the stub's references
     // right afterwards?)
     stub->LockTableEntry();
-    if (stub->GetObjectAddress() != nullptr) {
+    if (stub->GetTableEntry()->GetResidentBit()) {
         MarkObjectVisitor visitor(this);
         stub->GetObjectAddress()->VisitReferences(visitor, visitor);
     }

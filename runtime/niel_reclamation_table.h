@@ -19,6 +19,7 @@ namespace swap {
 
 const unsigned int OCCUPIED_BIT_OFFSET = 0;
 const unsigned int KERNEL_LOCK_BIT_OFFSET = 1;
+const unsigned int RESIDENT_BIT_OFFSET = 2;
 
 class TableEntry {
   public:
@@ -58,6 +59,18 @@ class TableEntry {
 
     void ClearKernelLockBit() {
         ClearBit(KERNEL_LOCK_BIT_OFFSET);
+    }
+
+    bool GetResidentBit() {
+        return GetBit(RESIDENT_BIT_OFFSET);
+    }
+
+    void SetResidentBit() {
+        SetBit(RESIDENT_BIT_OFFSET);
+    }
+
+    void ClearResidentBit() {
+        ClearBit(RESIDENT_BIT_OFFSET);
     }
 
     uint8_t GetAppLockCounter() {

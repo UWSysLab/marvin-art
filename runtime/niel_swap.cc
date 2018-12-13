@@ -616,7 +616,19 @@ void patchStubReferences(Thread * self, gc::Heap * heap) {
     gc::space::RosAllocSpace * rosAllocSpace = heap->GetRosAllocSpace();
     rosAllocSpace->Walk(&PatchCallback, nullptr);
 
-    swappedInSpace->Walk(&PatchCallback, nullptr);
+    // "Walk" the swappedInSpace and do the same thing that the PatchCallback
+    // does in the other spaces.
+    for (TableEntry * rte = recTable.Begin(); rte < recTable.End(); rte++) {
+        rte->LockFromAppThread();
+        if (rte->GetOccupiedBit() && rte->GetResidentBit()) {
+            mirror::Object * obj = rte->GetObjectAddress();
+            CHECK(obj != nullptr);
+            PatchVisitor visitor;
+            PatchReferenceVisitor referenceVisitor;
+            obj->VisitReferences(visitor, referenceVisitor);
+        }
+        rte->UnlockFromAppThread();
+    }
 
     GlobalRefRootVisitor visitor;
     Runtime::Current()->VisitRoots(&visitor, kVisitRootFlagAllRoots);
@@ -792,6 +804,7 @@ void CreateStubs(Thread * self, gc::Heap * heap) {
         // Do bookkeeping
         remappingTable[obj] = stub;
         stub->SetObjectAddress(objCopy);
+        stub->GetTableEntry()->SetResidentBit();
         int numPages = objSize / kPageSize;
         if (objSize % kPageSize > 0) {
             numPages += 1;
@@ -822,10 +835,12 @@ bool doKernelReclamationChecks(TableEntry * rte) {
         return false;
     }
 
-    mirror::Object * obj = rte->GetObjectAddress();
-    if (obj == nullptr) {
+    if (!rte->GetResidentBit()) {
         return false;
     }
+
+    mirror::Object * obj = rte->GetObjectAddress();
+    CHECK(obj != nullptr);
 
     bool isDirty = obj->GetDirtyBit();
     if (isDirty) {
@@ -843,7 +858,7 @@ bool doKernelReclamationChecks(TableEntry * rte) {
 
 // NOTE: This method implements the memory-reclaiming functionality that would
 // be performed by the OS according to our design.
-void SwapObjectsOut(Thread * self) {
+void SwapObjectsOut() {
     if (!swapEnabled) {
         return;
     }
@@ -858,8 +873,9 @@ void SwapObjectsOut(Thread * self) {
             if (secondCheck) {
                 mirror::Object * obj = rte->GetObjectAddress();
                 CHECK(swappedInSpace->Contains(obj));
-                swappedInSpace->FreeList(self, 1, &obj);
-                rte->SetObjectAddress(nullptr);
+                size_t range = rte->GetNumPages() * kPageSize;
+                madvise(obj, range, MADV_DONTNEED);
+                rte->ClearResidentBit();
             }
             rte->ClearKernelLockBit();
         }
@@ -918,32 +934,24 @@ void SemiSpaceUpdateDataStructures(Thread * self) {
 
 mirror::Object * swapInObject(Thread * self, Stub * stub, std::streampos objOffset,
                               size_t objSize) {
-    CHECK(stub->GetObjectAddress() == nullptr);
+    CHECK(stub->GetTableEntry()->GetResidentBit() == 0);
+    CHECK(stub->GetObjectAddress() != nullptr);
 
-    mirror::Object * newObj = nullptr;
-    size_t bytesAllocated;
-    size_t usableSize;
-    size_t bytesTlBulkAllocated;
-    newObj = swappedInSpace->Alloc(self,
-                                   objSize,
-                                   &bytesAllocated,
-                                   &usableSize,
-                                   &bytesTlBulkAllocated);
-    CHECK(newObj != nullptr);
+    mirror::Object * destObj = stub->GetObjectAddress();
 
     swapFileMutex.ExclusiveLock(self);
     std::streampos curPos = swapfile.tellp();
     swapfile.seekg(objOffset);
-    swapfile.read((char *)newObj, objSize);
+    swapfile.read((char *)destObj, objSize);
     swapfile.seekg(curPos);
     swapFileMutex.ExclusiveUnlock(self);
 
-    CHECK(newObj->GetDirtyBit() == 0);
+    CHECK(destObj->GetDirtyBit() == 0);
 
-    stub->CopyRefsInto(newObj);
-    stub->SetObjectAddress(newObj);
+    stub->CopyRefsInto(destObj);
+    stub->GetTableEntry()->SetResidentBit();
 
-    return newObj;
+    return destObj;
 }
 
 //TODO: make sure obj doesn't get freed during GC as long as stub isn't freed,
@@ -985,9 +993,8 @@ void SwapObjectsIn(gc::Heap * heap) {
 
             // Only swap in object if it wasn't already swapped in on-demand
             stub->LockTableEntry();
-            mirror::Object * swappedInObj = stub->GetObjectAddress();
-            if (swappedInObj == nullptr) {
-                swappedInObj = swapInObject(self, stub, objOffset, objSize);
+            if (!stub->GetTableEntry()->GetResidentBit()) {
+                swapInObject(self, stub, objOffset, objSize);
             }
             stub->UnlockTableEntry();
         }
@@ -1292,11 +1299,11 @@ void CheckAndUpdate(gc::collector::GarbageCollector * gc, mirror::Object * objec
     if (object->GetStubFlag()) {
         stub = (Stub *)object;
         stub->LockTableEntry();
-        object = stub->GetObjectAddress();
-        if (object == nullptr) {
+        if (!stub->GetTableEntry()->GetResidentBit()) {
             stub->UnlockTableEntry();
             return;
         }
+        object = stub->GetObjectAddress();
     }
 
     mirror::Object * bookkeepingKey = object;

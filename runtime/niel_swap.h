@@ -59,7 +59,7 @@ void CreateStubs(Thread * self, gc::Heap * heap) REQUIRES(Locks::mutator_lock_);
  * Reclaim (free from memory) all objects with stubs that are not dirty and
  * cold.
  */
-void SwapObjectsOut(Thread * self) REQUIRES(Locks::mutator_lock_);
+void SwapObjectsOut() REQUIRES(Locks::mutator_lock_);
 
 /*
  * Called by semi-space GC to tell us where an object is moving.

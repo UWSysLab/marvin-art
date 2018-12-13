@@ -3886,10 +3886,11 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
   // Put a back-pointer to the stub in the reclamation table entry
   Store(Primitive::kPrimInt, objectReg.W(), MemOperand(temp, 8));
 
-  // Load object address from reclamation table entry
-  Load(Primitive::kPrimInt, temp.W(), MemOperand(temp, 4)); // temp now holds table_entry_->object_address_
+  // Load resident bit from reclamation table entry
+  Load(Primitive::kPrimInt, temp.W(), MemOperand(temp, 0)); // temp now holds table_entry_->bit_flags_
+  __ And(temp, temp, 0x1 << niel::swap::RESIDENT_BIT_OFFSET); // temp now holds a nonzero value if the resident bit is set or zero if the resident bit is cleared
 
-  // Skip SwapInOnDemand() call if stub has a non-null object_address_
+  // Skip SwapInOnDemand() call if resident bit is set
   __ Cbnz(temp, &swapDoneLabel);
 
   std::vector<CPURegister> registersToSave = IdentifyRegistersToSave(registersToMaybeSave,

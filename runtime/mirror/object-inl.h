@@ -913,7 +913,7 @@ inline void Object::SetFieldObjectWithoutWriteBarrier(MemberOffset field_offset,
   if (UNLIKELY(GetStubFlag())) {
     niel::swap::Stub * stub = (niel::swap::Stub *)this;
     stub->LockTableEntry();
-    if (UNLIKELY(stub->GetObjectAddress() == nullptr)) {
+    if (UNLIKELY(!stub->GetTableEntry()->GetResidentBit())) {
       niel::swap::SwapInOnDemand(stub);
     }
     ((Object *)(stub->GetObjectAddress()))->SetFieldObjectWithoutWriteBarrier
