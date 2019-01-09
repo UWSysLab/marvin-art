@@ -3840,6 +3840,23 @@ void CodeGeneratorARM64::GenerateLockReclamationTableEntry(Register tableEntryRe
   __ Add(temp, temp, 1);
   Store(Primitive::kPrimBoolean, temp, MemOperand(tableEntryReg, 1));
 
+  /*
+   * I believe adding a DMB barrier after the write to the app lock counter
+   * here and using C++ atomics in the interpreter code that locks RTEs (in
+   * niel_reclamation_table.h) together provide the necessary ordering
+   * guarantees for the RTE locking protocol to work correctly. According to
+   * the "ARM Architecture Reference Manual ARMv8" (version D.a), a write with
+   * release semantics followed by a read with acquire semantics provides
+   * barrier-ordered-before ordering equivalent to using a DMB barrier.
+   *
+   * The RTE locking protocol is essentially a simpler version of Dekker's
+   * algorithm (it's simpler because the kernel always gives up when it
+   * contends with an app thread).
+   */
+
+  // Barrier
+  __ Dmb(FullSystem, BarrierAll);
+
   // Spin until the kernel lock bit is 0
   __ Bind(&kernelLockBit2Label);
   Load(Primitive::kPrimBoolean, temp, MemOperand(tableEntryReg, 0)); // temp now holds table_entry_->bit_flags_
