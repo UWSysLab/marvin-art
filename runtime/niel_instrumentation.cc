@@ -91,6 +91,9 @@ long numStubs = 0;
 long sizeWorkingSetRead = 0;
 long sizeWorkingSetWrite = 0;
 
+uint32_t maxPointerCount4KB = 0;
+double maxPointerFrac4KB = 0;
+
 LogHistogram objectSizeHist(2, 4, 25);
 LogHistogram objectSizeTotalMemoryCounts(2, 4, 25);
 LogHistogram pointerFrac100KBObjectHist(1.5, -40, -23);
@@ -218,6 +221,9 @@ void StartAccessCount(gc::collector::GarbageCollector * gc) {
 
     sizeWorkingSetRead = 0;
     sizeWorkingSetWrite = 0;
+
+    maxPointerCount4KB = 0;
+    maxPointerFrac4KB = 0;
 }
 
 void CountAccess(gc::collector::GarbageCollector * gc, mirror::Object * object) {
@@ -287,6 +293,15 @@ void CountAccess(gc::collector::GarbageCollector * gc, mirror::Object * object) 
     objectSizeTotalMemoryCounts.AddMultiple(objectSize, objectSize);
     if (objectSize >= 100 * 1024) {
         pointerFrac100KBObjectHist.Add(pointerSizeFrac);
+    }
+
+    if (objectSize >= 4 * 1024) {
+        if (numPointers > maxPointerCount4KB) {
+            maxPointerCount4KB = numPointers;
+        }
+        if (pointerSizeFrac > maxPointerFrac4KB) {
+            maxPointerFrac4KB = pointerSizeFrac;
+        }
     }
 
     readShiftRegHist.Add(rsrVal);
@@ -363,6 +378,9 @@ void FinishAccessCount(gc::collector::GarbageCollector * gc) {
     LOG(INFO) << "NIEL write working set size: " << sizeWorkingSetWrite;
 
 /*
+    LOG(INFO) << "NIEL max pointer count in object >= 4KB: " << maxPointerCount4KB;
+    LOG(INFO) << "NIEL max pointer frac in object >= 4KB: " << maxPointerFrac4KB;
+
     LOG(INFO) << "NIEL object size hist (scaled): \n" << objectSizeHist.Print(true, true);
     LOG(INFO) << "NIEL object size total memory counts (scaled): \n"
               << objectSizeTotalMemoryCounts.Print(true, true);
