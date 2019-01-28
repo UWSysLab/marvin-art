@@ -38,6 +38,11 @@ namespace swap {
 // commercial apps.
 #define COMMERCIAL_APP_COMPAT_MODE false
 
+
+// When this flag is set to true, the runtime will swap in all swapped-out
+// objects when the app moves to the foreground.
+#define SWAP_IN_ON_FOREGROUND true
+
 /* Constants */
 const double COMPACT_THRESHOLD = 0.25;
 const int BG_MARK_SWEEPS_BEFORE_SEMI_SPACE = 4;
@@ -974,6 +979,10 @@ void SwapInOnDemand(Stub * stub) {
 
 void SwapObjectsIn(gc::Heap * heap) {
     if (!swapEnabled) {
+        return;
+    }
+
+    if (!SWAP_IN_ON_FOREGROUND) {
         return;
     }
 
