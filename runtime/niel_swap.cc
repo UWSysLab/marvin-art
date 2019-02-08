@@ -1158,6 +1158,8 @@ void InitIfNecessary(Thread * self) {
     LOG(INFO) << "NIEL successfully initialized swap for package " << packageName;
     LOG(INFO) << "NIEL commercial app compat mode is "
               << (COMMERCIAL_APP_COMPAT_MODE ? "enabled" : "disabled");
+    LOG(INFO) << "NIEL preemptive swap-in on foreground transitions is "
+              << (SWAP_IN_ON_FOREGROUND ? "enabled" : "disabled");
 }
 
 bool copyFile(const std::string & fromFileName, const std::string & toFileName) {
