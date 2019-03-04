@@ -45,7 +45,7 @@ namespace swap {
 
 /* Constants */
 const double COMPACT_THRESHOLD = 0.25;
-const int BG_MARK_SWEEPS_BEFORE_SEMI_SPACE = 4;
+const int BG_MARK_SWEEPS_BEFORE_SEMI_SPACE = 6;
 const uint64_t WRITE_TASK_FG_MAX_DURATION = 1000000000; // ns
 const uint64_t WRITE_TASK_BG_MAX_DURATION = 1000000000; // ns
 const uint64_t WRITE_TASK_FG_WAIT_TIME = 5000000000; // ns
