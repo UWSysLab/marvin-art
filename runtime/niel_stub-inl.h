@@ -55,14 +55,6 @@ inline void Stub::SetStubFlag() {
     SetBitsAtomic8(x_flags_, 7, 1, std::memory_order_acq_rel);
 }
 
-inline void Stub::SetLargeObjectFlag() {
-    SetBitsAtomic8(x_flags_, 6, 1, std::memory_order_acq_rel);
-}
-
-inline bool Stub::GetLargeObjectFlag() {
-    return (bool)GetBitsAtomic8(x_flags_, 6, 1, std::memory_order_acquire);
-}
-
 inline void Stub::ClearFlags() {
     ClearBitsAtomic8(x_flags_, 0, 8, std::memory_order_acq_rel);
 }

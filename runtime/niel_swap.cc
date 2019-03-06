@@ -779,9 +779,6 @@ void CreateStubs(Thread * self, gc::Heap * heap) {
         stub->SetTableEntry(entry);
         stub->LockTableEntry();
         stub->PopulateFrom(obj);
-        if (heap->GetLargeObjectsSpace()->Contains(obj)) {
-            stub->SetLargeObjectFlag();
-        }
 
         // Copy the object into the swappedInSpace
         obj->SetIgnoreReadFlag();

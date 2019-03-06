@@ -47,9 +47,6 @@ class Stub {
     uint32_t GetForwardingAddress() { return forwarding_address_; }
     void SetForwardingAddress(uint32_t addr) { forwarding_address_ = addr; }
 
-    void SetLargeObjectFlag();
-    bool GetLargeObjectFlag();
-
     mirror::Object * GetObjectAddress() {
         return GetTableEntry()->GetObjectAddress();
     }
@@ -91,10 +88,9 @@ class Stub {
     /*
      * x_flags_ layout:
      * 7|6|543210
-     * s|l|
+     * s|
      *
      * s: stub flag
-     * l: large object flag
      */
     std::atomic<uint8_t> x_flags_;
     uint8_t padding_b_;
