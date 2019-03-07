@@ -113,9 +113,9 @@ SemiSpace::SemiSpace(Heap* heap, bool generational, const std::string& name_pref
 }
 
 void SemiSpace::RunPhases() {
-  LOG(INFO) << "NIEL running SemiSpace GC";
+  LOG(INFO) << "MARVIN running SemiSpace GC";
   Thread* self = Thread::Current();
-  niel::swap::SemiSpaceRecordStubMappings(self);
+  marvin::swap::SemiSpaceRecordStubMappings(self);
   InitializePhase();
   // Semi-space collector is special since it is sometimes called with the mutators suspended
   // during the zygote creation and collector transitions. If we already exclusively hold the
@@ -141,7 +141,7 @@ void SemiSpace::RunPhases() {
     GetHeap()->PostGcVerification(this);
   }
   FinishPhase();
-  niel::swap::SemiSpaceUpdateDataStructures(self);
+  marvin::swap::SemiSpaceUpdateDataStructures(self);
 }
 
 void SemiSpace::InitializePhase() {
@@ -511,7 +511,7 @@ static inline size_t CopyAvoidingDirtyingPages(void* dest, const void* src, size
 mirror::Object* SemiSpace::MarkNonForwardedObject(mirror::Object* obj) {
   size_t object_size;
   if (obj->GetStubFlag()) {
-    niel::swap::Stub * stub = (niel::swap::Stub *)obj;
+    marvin::swap::Stub * stub = (marvin::swap::Stub *)obj;
     object_size = stub->GetSize();
   }
   else {
@@ -607,7 +607,7 @@ mirror::Object* SemiSpace::MarkNonForwardedObject(mirror::Object* obj) {
          fallback_space_->HasAddress(forward_address) ||
          (generational_ && promo_dest_space_->HasAddress(forward_address)))
       << forward_address << "\n" << GetHeap()->DumpSpaces();
-  niel::swap::RecordForwardedObject(self_, obj, forward_address);
+  marvin::swap::RecordForwardedObject(self_, obj, forward_address);
   return forward_address;
 }
 
@@ -733,7 +733,7 @@ class SemiSpace::MarkObjectVisitor {
 void SemiSpace::ScanObject(Object* obj) {
   DCHECK(!from_space_->HasAddress(obj)) << "Scanning object " << obj << " in from space";
   if (obj->GetStubFlag()) {
-    niel::swap::Stub * stub = (niel::swap::Stub *)obj;
+    marvin::swap::Stub * stub = (marvin::swap::Stub *)obj;
 
     // TODO: Figure out whether this code is necessary. (Don't we keep the
     // stub's references updated whenever the object's references change,

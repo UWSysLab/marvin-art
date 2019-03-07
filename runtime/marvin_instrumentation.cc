@@ -1,4 +1,4 @@
-#include "niel_instrumentation.h"
+#include "marvin_instrumentation.h"
 
 #include "gc/allocator/rosalloc.h"
 #include "gc/collector/garbage_collector.h"
@@ -15,14 +15,14 @@
 #include <cstring>
 #include <map>
 
-#include "niel_bivariate_histogram.h"
-#include "niel_common.h"
-#include "niel_histogram.h"
-#include "niel_swap.h"
+#include "marvin_bivariate_histogram.h"
+#include "marvin_common.h"
+#include "marvin_histogram.h"
+#include "marvin_swap.h"
 
 namespace art {
 
-namespace niel {
+namespace marvin {
 
 namespace inst {
 
@@ -35,7 +35,7 @@ void printAllocCounts();
 void printHeap();
 
 /* Variables */
-Mutex instMutex("NielInstrumentationMutex", kLoggingLock);
+Mutex instMutex("MarvinInstrumentationMutex", kLoggingLock);
 time_t lastLogTime;
 
 /*     Locked with instMutex */
@@ -233,7 +233,7 @@ void CountAccess(gc::collector::GarbageCollector * gc, mirror::Object * object) 
 
     if (object->GetStubFlag()) {
         numStubs++;
-        niel::swap::Stub * stub = (niel::swap::Stub *)object;
+        marvin::swap::Stub * stub = (marvin::swap::Stub *)object;
         if (stub->GetTableEntry()->GetResidentBit()) {
             CountAccess(gc, stub->GetObjectAddress());
         }
@@ -343,63 +343,63 @@ void FinishAccessCount(gc::collector::GarbageCollector * gc) {
         return;
     }
 
-    LOG(INFO) << "NIEL (GC " << gc->GetName() << "): objects read: " << objectsRead
+    LOG(INFO) << "MARVIN (GC " << gc->GetName() << "): objects read: " << objectsRead
               << " objects written: " << objectsWritten << " objects read and written: "
               << objectsReadAndWritten << " total objects: " << totalObjects
               << " shenanigans: " << shenanigansCount;
-    LOG(INFO) << "NIEL total pointer frac of read objects: "
+    LOG(INFO) << "MARVIN total pointer frac of read objects: "
               << (double)readTotalPointerSize / readTotalObjectSize
               << " pointer size: " << readTotalPointerSize
               << " object size: " << readTotalObjectSize;
-    LOG(INFO) << "NIEL unread total pointer frac: "
+    LOG(INFO) << "MARVIN unread total pointer frac: "
               << (double)unreadTotalPointerSize / unreadTotalObjectSize
               << " pointer size: " << unreadTotalPointerSize
               << " object size: " << unreadTotalObjectSize;
-    LOG(INFO) << "NIEL small total pointer frac: "
+    LOG(INFO) << "MARVIN small total pointer frac: "
               << (double)smallObjectTotalPointerSize / smallObjectTotalObjectSize
               << " pointer size: " << smallObjectTotalPointerSize
               << " object size: " << smallObjectTotalObjectSize;
-    LOG(INFO) << "NIEL large total pointer frac: "
+    LOG(INFO) << "MARVIN large total pointer frac: "
               << (double)largeObjectTotalPointerSize / largeObjectTotalObjectSize
               << " pointer size: " << largeObjectTotalPointerSize
               << " object size: " << largeObjectTotalObjectSize;
-    LOG(INFO) << "NIEL cold object size: " << coldObjectTotalSize
+    LOG(INFO) << "MARVIN cold object size: " << coldObjectTotalSize
               << " large cold object size: " << largeColdObjectTotalSize
               << " large object size: " << largeObjectTotalObjectSize
               << " total object size: "
               << (smallObjectTotalObjectSize + largeObjectTotalObjectSize);
-    LOG(INFO) << "NIEL size of swappable objects with NoSwapFlagSet: " << noSwapFlagTotalSize;
-    LOG(INFO) << "NIEL size of swappable objects not in RosAlloc or large object space: "
+    LOG(INFO) << "MARVIN size of swappable objects with NoSwapFlagSet: " << noSwapFlagTotalSize;
+    LOG(INFO) << "MARVIN size of swappable objects not in RosAlloc or large object space: "
               << notInSpaceTotalSize;
-    LOG(INFO) << "NIEL size of swappable objects of invalid type: " << notSwappableTypeTotalSize;
-    LOG(INFO) << "NIEL num stubs " << numStubs;
+    LOG(INFO) << "MARVIN size of swappable objects of invalid type: " << notSwappableTypeTotalSize;
+    LOG(INFO) << "MARVIN num stubs " << numStubs;
 
-    LOG(INFO) << "NIEL read working set size: " << sizeWorkingSetRead;
-    LOG(INFO) << "NIEL write working set size: " << sizeWorkingSetWrite;
+    LOG(INFO) << "MARVIN read working set size: " << sizeWorkingSetRead;
+    LOG(INFO) << "MARVIN write working set size: " << sizeWorkingSetWrite;
 
 /*
-    LOG(INFO) << "NIEL max pointer count in object >= 4KB: " << maxPointerCount4KB;
-    LOG(INFO) << "NIEL max pointer frac in object >= 4KB: " << maxPointerFrac4KB;
+    LOG(INFO) << "MARVIN max pointer count in object >= 4KB: " << maxPointerCount4KB;
+    LOG(INFO) << "MARVIN max pointer frac in object >= 4KB: " << maxPointerFrac4KB;
 
-    LOG(INFO) << "NIEL object size hist (scaled): \n" << objectSizeHist.Print(true, true);
-    LOG(INFO) << "NIEL object size total memory counts (scaled): \n"
+    LOG(INFO) << "MARVIN object size hist (scaled): \n" << objectSizeHist.Print(true, true);
+    LOG(INFO) << "MARVIN object size total memory counts (scaled): \n"
               << objectSizeTotalMemoryCounts.Print(true, true);
-    LOG(INFO) << "NIEL pointer frac hist of objects >= 100KB (scaled):\n"
+    LOG(INFO) << "MARVIN pointer frac hist of objects >= 100KB (scaled):\n"
               << pointerFrac100KBObjectHist.Print(true, true);
 */
 
 /*
-    LOG(INFO) << "NIEL pointer frac hist of small objects (scaled):\n"
+    LOG(INFO) << "MARVIN pointer frac hist of small objects (scaled):\n"
               << smallObjectPointerFracHist.Print(true, true);
-    LOG(INFO) << "NIEL pointer frac hist of large objects (scaled):\n"
+    LOG(INFO) << "MARVIN pointer frac hist of large objects (scaled):\n"
               << largeObjectPointerFracHist.Print(true, true);
-    LOG(INFO) << "NIEL read shift register hist:\n" << readShiftRegHist.Print(false, true);
-    LOG(INFO) << "NIEL write shift register hist:\n" << writeShiftRegHist.Print(false, true);
-    LOG(INFO) << "NIEL read shift reg vs pointer frac hist:\n"
+    LOG(INFO) << "MARVIN read shift register hist:\n" << readShiftRegHist.Print(false, true);
+    LOG(INFO) << "MARVIN write shift register hist:\n" << writeShiftRegHist.Print(false, true);
+    LOG(INFO) << "MARVIN read shift reg vs pointer frac hist:\n"
               << readShiftRegVsPointerFracHist.Print(false);
-    LOG(INFO) << "NIEL write shift reg vs pointer frac hist:\n"
+    LOG(INFO) << "MARVIN write shift reg vs pointer frac hist:\n"
               << writeShiftRegVsPointerFracHist.Print(false);
-    LOG(INFO) << "NIEL object size vs pointer frac hist:\n"
+    LOG(INFO) << "MARVIN object size vs pointer frac hist:\n"
               << objectSizeVsPointerFracHist.Print(false);
 */
 }
@@ -416,17 +416,17 @@ void maybePrintLog() {
 void printAllocCounts() {
     for (auto it = currentAllocCounts.begin(); it != currentAllocCounts.end(); it++) {
         std::string name = it->first;
-        LOG(INFO) << "NIEL space |" << name << "| curr count: " << currentAllocCounts[name]
+        LOG(INFO) << "MARVIN space |" << name << "| curr count: " << currentAllocCounts[name]
                   << " curr size: " << currentAllocSizes[name] << " total count: "
                   << totalAllocCounts[name] << " total size: " << totalAllocSizes[name]
                   ;
     }
-    LOG(INFO) << "NIEL RosAlloc curr thread-local/normal count: " << numCurrentRosAllocAllocs
+    LOG(INFO) << "MARVIN RosAlloc curr thread-local/normal count: " << numCurrentRosAllocAllocs
               << " size: " << sizeCurrentRosAllocAllocs
               << " curr large count: " << numCurrentRosAllocLargeObjectAllocs
               << " size: " << sizeCurrentRosAllocLargeObjectAllocs
               ;
-    LOG(INFO) << "NIEL RosAlloc total thread-local count: " << numTotalRosAllocThreadLocalAllocs
+    LOG(INFO) << "MARVIN RosAlloc total thread-local count: " << numTotalRosAllocThreadLocalAllocs
               << " size: " << sizeTotalRosAllocThreadLocalAllocs
               << " total normal count: " << numTotalRosAllocNormalAllocs
               << " size: " << sizeTotalRosAllocNormalAllocs
@@ -441,22 +441,22 @@ void printHeap() {
         return;
     }
 
-    LOG(INFO) << "NIEL num spaces " << (heap->nielinst_spaces_.size());
-    for (auto it = heap->nielinst_spaces_.begin(); it != heap->nielinst_spaces_.end(); it++) {
-        LOG(INFO) << "NIEL space " << (*it)->GetName()
+    LOG(INFO) << "MARVIN num spaces " << (heap->marvininst_spaces_.size());
+    for (auto it = heap->marvininst_spaces_.begin(); it != heap->marvininst_spaces_.end(); it++) {
+        LOG(INFO) << "MARVIN space " << (*it)->GetName()
                   << " continuous? " << (*it)->IsContinuousSpace()
                   << " discontinuous? " << (*it)->IsDiscontinuousSpace()
                   << " alloc? " << (*it)->IsAllocSpace()
                   ;
     }
 
-    LOG(INFO) << "NIEL num garbage collectors " << heap->nielinst_GetGarbageCollectors()->size();
-    for (auto it = heap->nielinst_GetGarbageCollectors()->begin();
-            it != heap->nielinst_GetGarbageCollectors()->end(); it++) {
-        LOG(INFO) << "NIEL garbage collector " << (*it)->GetName()
-                  << " semi_space? " << ((*it) == heap->nielinst_GetSemiSpace())
-                  << " mark_compact? " << ((*it) == heap->nielinst_GetMarkCompact())
-                  << " concurrent_copying? " << ((*it) == heap->nielinst_GetConcurrentCopying())
+    LOG(INFO) << "MARVIN num garbage collectors " << heap->marvininst_GetGarbageCollectors()->size();
+    for (auto it = heap->marvininst_GetGarbageCollectors()->begin();
+            it != heap->marvininst_GetGarbageCollectors()->end(); it++) {
+        LOG(INFO) << "MARVIN garbage collector " << (*it)->GetName()
+                  << " semi_space? " << ((*it) == heap->marvininst_GetSemiSpace())
+                  << " mark_compact? " << ((*it) == heap->marvininst_GetMarkCompact())
+                  << " concurrent_copying? " << ((*it) == heap->marvininst_GetConcurrentCopying())
                   ;
     }
 
@@ -464,11 +464,11 @@ void printHeap() {
     if (rosAllocSpace != NULL) {
         gc::allocator::RosAlloc * rosAlloc = rosAllocSpace->GetRosAlloc();
         if (rosAlloc != NULL) {
-            LOG(INFO) << "NIEL RosAlloc footprint: " << rosAlloc->Footprint();
+            LOG(INFO) << "MARVIN RosAlloc footprint: " << rosAlloc->Footprint();
         }
     }
 }
 
 } // namespace inst
-} // namespace niel
+} // namespace marvin
 } // namespace art

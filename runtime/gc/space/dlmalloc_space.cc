@@ -30,7 +30,7 @@
 #include "thread_list.h"
 #include "utils.h"
 
-#include "niel_swap.h"
+#include "marvin_swap.h"
 
 namespace art {
 namespace gc {
@@ -184,7 +184,7 @@ size_t DlMallocSpace::FreeList(Thread* self, size_t num_ptrs, mirror::Object** p
   DCHECK(ptrs != nullptr);
 
   for (size_t i = 0; i < num_ptrs; i++) {
-    niel::swap::GcRecordFree(self, ptrs[i]);
+    marvin::swap::GcRecordFree(self, ptrs[i]);
   }
 
   // Don't need the lock to calculate the size of the freed pointers.
@@ -223,7 +223,7 @@ size_t DlMallocSpace::FreeList(Thread* self, size_t num_ptrs, mirror::Object** p
   {
     MutexLock mu(self, lock_);
     mspace_bulk_free(mspace_, reinterpret_cast<void**>(ptrs), num_ptrs);
-    NIEL_INST_RECORD_FREE(self, this, bytes_freed, num_ptrs);
+    MARVIN_INST_RECORD_FREE(self, this, bytes_freed, num_ptrs);
     return bytes_freed;
   }
 }

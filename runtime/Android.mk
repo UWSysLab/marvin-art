@@ -159,13 +159,13 @@ LIBART_COMMON_SRC_FILES := \
   native/org_apache_harmony_dalvik_ddmc_DdmServer.cc \
   native/org_apache_harmony_dalvik_ddmc_DdmVmInternal.cc \
   native/sun_misc_Unsafe.cc \
-  niel_bivariate_histogram.cc \
-  niel_common.cc \
-  niel_histogram.cc \
-  niel_instrumentation.cc \
-  niel_reclamation_table.cc \
-  niel_stub.cc \
-  niel_swap.cc \
+  marvin_bivariate_histogram.cc \
+  marvin_common.cc \
+  marvin_histogram.cc \
+  marvin_instrumentation.cc \
+  marvin_reclamation_table.cc \
+  marvin_stub.cc \
+  marvin_swap.cc \
   oat.cc \
   oat_file.cc \
   oat_file_assistant.cc \

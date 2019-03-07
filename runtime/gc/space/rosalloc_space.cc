@@ -29,7 +29,7 @@
 #include "utils.h"
 #include "memory_tool_malloc_space-inl.h"
 
-#include "niel_swap.h"
+#include "marvin_swap.h"
 
 namespace art {
 namespace gc {
@@ -191,7 +191,7 @@ MallocSpace* RosAllocSpace::CreateInstance(MemMap* mem_map, const std::string& n
 }
 
 size_t RosAllocSpace::Free(Thread* self, mirror::Object* ptr) {
-  niel::swap::GcRecordFree(self, ptr);
+  marvin::swap::GcRecordFree(self, ptr);
   if (kDebugSpaces) {
     CHECK(ptr != nullptr);
     CHECK(Contains(ptr)) << "Free (" << ptr << ") not in bounds of heap " << *this;
@@ -207,7 +207,7 @@ size_t RosAllocSpace::FreeList(Thread* self, size_t num_ptrs, mirror::Object** p
   DCHECK(ptrs != nullptr);
 
   for (size_t i = 0; i < num_ptrs; i++) {
-    niel::swap::GcRecordFree(self, ptrs[i]);
+    marvin::swap::GcRecordFree(self, ptrs[i]);
   }
 
   size_t verify_bytes = 0;
@@ -245,7 +245,7 @@ size_t RosAllocSpace::FreeList(Thread* self, size_t num_ptrs, mirror::Object** p
   if (kVerifyFreedBytes) {
     CHECK_EQ(verify_bytes, bytes_freed);
   }
-  NIEL_INST_RECORD_FREE(self, this, bytes_freed, num_ptrs);
+  MARVIN_INST_RECORD_FREE(self, this, bytes_freed, num_ptrs);
   return bytes_freed;
 }
 

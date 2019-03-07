@@ -1,4 +1,4 @@
-#include "niel_bivariate_histogram.h"
+#include "marvin_bivariate_histogram.h"
 
 #include <cmath>
 #include <iomanip>
@@ -6,7 +6,7 @@
 
 namespace art {
 
-namespace niel {
+namespace marvin {
 
 namespace inst {
 
@@ -183,5 +183,5 @@ void BivariateHistogram::Clear() {
 }
 
 } // namespace inst
-} // namespace niel
+} // namespace marvin
 } // namespace art

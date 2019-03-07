@@ -1,15 +1,15 @@
-#include "niel_stub.h"
+#include "marvin_stub.h"
 
 #include <iostream>
 
 #include "mirror/class.h"
 #include "mirror/object-inl.h"
 #include "mirror/object_reference.h"
-#include "niel_stub-inl.h"
+#include "marvin_stub-inl.h"
 
 namespace art {
 
-namespace niel {
+namespace marvin {
 
 namespace swap {
 
@@ -105,7 +105,7 @@ void Stub::CopyRefsInto(mirror::Object * object) {
 }
 
 int Stub::CountReferences(mirror::Object * object) {
-    // Copied from niel_instrumentation.cc
+    // Copied from marvin_instrumentation.cc
     object->SetIgnoreReadFlag();
     mirror::Class * klass = object->GetClass();
     object->ClearIgnoreReadFlag();
@@ -119,17 +119,17 @@ int Stub::CountReferences(mirror::Object * object) {
 }
 
 void Stub::RawDump() {
-    LOG(INFO) << "NIEL raw dump for stub @" << this;
+    LOG(INFO) << "MARVIN raw dump for stub @" << this;
     size_t stubSize = GetSize();
     char * stubData = (char *)this;
     for (size_t i = 0; i < stubSize; i++) {
         LOG(INFO) << i << ": " << std::hex << (int)stubData[i];
     }
-    LOG(INFO) << "NIEL end raw dump for stub @" << this;
+    LOG(INFO) << "MARVIN end raw dump for stub @" << this;
 }
 
 void Stub::SemanticDump() {
-    LOG(INFO) << "NIEL semantic dump for stub @" << this;
+    LOG(INFO) << "MARVIN semantic dump for stub @" << this;
     LOG(INFO) << "table_entry_: " << std::hex << table_entry_;
     LOG(INFO) << "forwarding_address_: " << std::hex << forwarding_address_;
     LOG(INFO) << "stub flag: "<< GetStubFlag();
@@ -154,7 +154,7 @@ void Stub::SemanticDump() {
         }
         LOG(INFO) << "ref " << i << ": " << ref << " " << refString;
     }
-    LOG(INFO) << "NIEL end semantic dump for stub @" << this;
+    LOG(INFO) << "MARVIN end semantic dump for stub @" << this;
 }
 
 void PopulateStub(Stub * stub, mirror::Object * object) {
@@ -162,5 +162,5 @@ void PopulateStub(Stub * stub, mirror::Object * object) {
 }
 
 } // namespace swap
-} // namespace niel
+} // namespace marvin
 } // namespace art

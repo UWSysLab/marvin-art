@@ -1,11 +1,11 @@
-#ifndef ART_RUNTIME_NIEL_BIVARIATE_HISTOGRAM_H_
-#define ART_RUNTIME_NIEL_BIVARIATE_HISTOGRAM_H_
+#ifndef ART_RUNTIME_MARVIN_BIVARIATE_HISTOGRAM_H_
+#define ART_RUNTIME_MARVIN_BIVARIATE_HISTOGRAM_H_
 
 #include <string>
 
 namespace art {
 
-namespace niel {
+namespace marvin {
 
 namespace inst {
 
@@ -56,7 +56,7 @@ class BivariateHistogram {
 };
 
 } // namespace inst
-} // namespace niel
+} // namespace marvin
 } // namespace art
 
-#endif // ART_RUNTIME_NIEL_BIVARIATE_HISTOGRAM_H_
+#endif // ART_RUNTIME_MARVIN_BIVARIATE_HISTOGRAM_H_

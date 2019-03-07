@@ -1,8 +1,8 @@
-#include "niel_common.h"
+#include "marvin_common.h"
 
 namespace art {
 
-namespace niel {
+namespace marvin {
 
 void openFile(const std::string & path, std::fstream & stream) {
     stream.open(path, std::ios::binary | std::ios::in | std::ios::out | std::ios::trunc);
@@ -21,7 +21,7 @@ void openFileAppend(const std::string & path, std::fstream & stream) {
 bool checkStreamError(const std::ios & stream, const std::string & msg) {
     bool error = !stream;
     if (error) {
-        LOG(ERROR) << "NIELERROR stream error: " << msg << " (" << stream.good() << " "
+        LOG(ERROR) << "MARVINERROR stream error: " << msg << " (" << stream.good() << " "
                    << stream.eof() << " " << stream.fail() << " " << stream.bad() << ")";
     }
     return error;

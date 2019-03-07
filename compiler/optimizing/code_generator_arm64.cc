@@ -3831,7 +3831,7 @@ void CodeGeneratorARM64::GenerateLockReclamationTableEntry(Register tableEntryRe
   // Spin until the kernel lock bit is 0
   __ Bind(&kernelLockBit1Label);
   Load(Primitive::kPrimBoolean, temp, MemOperand(tableEntryReg, 0)); // temp now holds table_entry_->bit_flags_
-  __ Lsr(temp, temp, niel::swap::KERNEL_LOCK_BIT_OFFSET); // temp now holds the table entry's kernel lock bit
+  __ Lsr(temp, temp, marvin::swap::KERNEL_LOCK_BIT_OFFSET); // temp now holds the table entry's kernel lock bit
   __ And(temp, temp, 0x1);
   __ Cbnz(temp, &kernelLockBit1Label);
 
@@ -3843,7 +3843,7 @@ void CodeGeneratorARM64::GenerateLockReclamationTableEntry(Register tableEntryRe
   /*
    * I believe adding a DMB barrier after the write to the app lock counter
    * here and using C++ atomics in the interpreter code that locks RTEs (in
-   * niel_reclamation_table.h) together provide the necessary ordering
+   * marvin_reclamation_table.h) together provide the necessary ordering
    * guarantees for the RTE locking protocol to work correctly. According to
    * the "ARM Architecture Reference Manual ARMv8" (version D.a), a write with
    * release semantics followed by a read with acquire semantics provides
@@ -3860,7 +3860,7 @@ void CodeGeneratorARM64::GenerateLockReclamationTableEntry(Register tableEntryRe
   // Spin until the kernel lock bit is 0
   __ Bind(&kernelLockBit2Label);
   Load(Primitive::kPrimBoolean, temp, MemOperand(tableEntryReg, 0)); // temp now holds table_entry_->bit_flags_
-  __ Lsr(temp, temp, niel::swap::KERNEL_LOCK_BIT_OFFSET); // temp now holds the table entry's kernel lock bit
+  __ Lsr(temp, temp, marvin::swap::KERNEL_LOCK_BIT_OFFSET); // temp now holds the table entry's kernel lock bit
   __ And(temp, temp, 0x1);
   __ Cbnz(temp, &kernelLockBit2Label);
 }
@@ -3905,7 +3905,7 @@ void CodeGeneratorARM64::GenerateStubCheckAndSwapCode(Register objectReg,
 
   // Load resident bit from reclamation table entry
   Load(Primitive::kPrimInt, temp.W(), MemOperand(temp, 0)); // temp now holds table_entry_->bit_flags_
-  __ And(temp, temp, 0x1 << niel::swap::RESIDENT_BIT_OFFSET); // temp now holds a nonzero value if the resident bit is set or zero if the resident bit is cleared
+  __ And(temp, temp, 0x1 << marvin::swap::RESIDENT_BIT_OFFSET); // temp now holds a nonzero value if the resident bit is set or zero if the resident bit is cleared
 
   // Skip SwapInOnDemand() call if resident bit is set
   __ Cbnz(temp, &swapDoneLabel);

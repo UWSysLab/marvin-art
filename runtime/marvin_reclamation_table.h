@@ -1,5 +1,5 @@
-#ifndef ART_RUNTIME_NIEL_RECLAMATION_TABLE_H_
-#define ART_RUNTIME_NIEL_RECLAMATION_TABLE_H_
+#ifndef ART_RUNTIME_MARVIN_RECLAMATION_TABLE_H_
+#define ART_RUNTIME_MARVIN_RECLAMATION_TABLE_H_
 
 #include "base/mutex.h"
 
@@ -13,7 +13,7 @@ namespace mirror {
     class Object;
 }
 
-namespace niel {
+namespace marvin {
 
 namespace swap {
 
@@ -158,7 +158,7 @@ class ReclamationTable {
 };
 
 } // namespace swap
-} // namespace niel
+} // namespace marvin
 } // namespace art
 
-#endif // ART_RUNTIME_NIEL_RECLAMATION_TABLE_H_
+#endif // ART_RUNTIME_MARVIN_RECLAMATION_TABLE_H_

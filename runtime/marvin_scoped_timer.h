@@ -1,22 +1,22 @@
-#ifndef ART_RUNTIME_NIEL_SCOPED_TIMER_H_
-#define ART_RUNTIME_NIEL_SCOPED_TIMER_H_
+#ifndef ART_RUNTIME_MARVIN_SCOPED_TIMER_H_
+#define ART_RUNTIME_MARVIN_SCOPED_TIMER_H_
 
 #include "base/logging.h"
 
 namespace art {
 
-namespace niel {
+namespace marvin {
 
 class ScopedTimer {
   public:
     ScopedTimer(const std::string & name) : timerName(name) {
-        LOG(INFO) << "NIEL starting " << timerName;
+        LOG(INFO) << "MARVIN starting " << timerName;
         startTime = NanoTime();
     }
 
     ~ScopedTimer() {
         uint64_t duration = NanoTime() - startTime;
-        LOG(INFO) << "NIEL ending " << timerName << ": took " << PrettyDuration(duration);
+        LOG(INFO) << "MARVIN ending " << timerName << ": took " << PrettyDuration(duration);
     }
 
   private:
@@ -24,7 +24,7 @@ class ScopedTimer {
     std::string timerName;
 };
 
-} // namespace niel
+} // namespace marvin
 } // namespace art
 
-#endif // ART_RUNTIME_NIEL_SCOPED_TIMER_H_
+#endif // ART_RUNTIME_MARVIN_SCOPED_TIMER_H_

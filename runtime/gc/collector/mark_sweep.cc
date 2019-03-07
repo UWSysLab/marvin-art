@@ -44,8 +44,8 @@
 #include "thread-inl.h"
 #include "thread_list.h"
 
-#include "niel_instrumentation.h"
-#include "niel_swap.h"
+#include "marvin_instrumentation.h"
+#include "marvin_swap.h"
 
 namespace art {
 namespace gc {
@@ -145,8 +145,8 @@ void MarkSweep::InitializePhase() {
 
 void MarkSweep::RunPhases() {
   Thread* self = Thread::Current();
-  LOG(INFO) << "NIEL running MarkSweep GC with name " << GetName();
-  NIEL_INST_START_ACCESS_COUNT(this);
+  LOG(INFO) << "MARVIN running MarkSweep GC with name " << GetName();
+  MARVIN_INST_START_ACCESS_COUNT(this);
   InitializePhase();
   Locks::mutator_lock_->AssertNotHeld(self);
   if (IsConcurrent()) {
@@ -174,7 +174,7 @@ void MarkSweep::RunPhases() {
   }
   GetHeap()->PostGcVerification(this);
   FinishPhase();
-  NIEL_INST_FINISH_ACCESS_COUNT(this);
+  MARVIN_INST_FINISH_ACCESS_COUNT(this);
 }
 
 void MarkSweep::ProcessReferences(Thread* self) {
@@ -1429,8 +1429,8 @@ void MarkSweep::ProcessMarkStack(bool paused) {
       }
       DCHECK(obj != nullptr);
       ScanObject(obj);
-      NIEL_INST_COUNT_ACCESS(this, obj);
-      niel::swap::CheckAndUpdate(this, obj);
+      MARVIN_INST_COUNT_ACCESS(this, obj);
+      marvin::swap::CheckAndUpdate(this, obj);
     }
   }
 }

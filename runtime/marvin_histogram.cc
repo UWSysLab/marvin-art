@@ -1,4 +1,4 @@
-#include "niel_histogram.h"
+#include "marvin_histogram.h"
 
 #include <cmath>
 #include <iomanip>
@@ -8,7 +8,7 @@
 
 namespace art {
 
-namespace niel {
+namespace marvin {
 
 namespace inst {
 
@@ -171,5 +171,5 @@ double LogHistogram::GetBinEnd(int binIndex) {
 }
 
 } // namespace inst
-} // namespace niel
+} // namespace marvin
 } // namespace art

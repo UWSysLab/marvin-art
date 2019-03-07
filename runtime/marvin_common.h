@@ -1,8 +1,8 @@
-#ifndef ART_RUNTIME_NIEL_COMMON_H_
-#define ART_RUNTIME_NIEL_COMMON_H_
+#ifndef ART_RUNTIME_MARVIN_COMMON_H_
+#define ART_RUNTIME_MARVIN_COMMON_H_
 
 /*
- * Common utility methods shared across niel_swap and niel_instrumentation.
+ * Common utility methods shared across marvin_swap and marvin_instrumentation.
  */
 
 #include <fstream>
@@ -15,7 +15,7 @@
 
 namespace art {
 
-namespace niel {
+namespace marvin {
 
 void openFile(const std::string & path, std::fstream & stream);
 
@@ -63,7 +63,7 @@ inline gc::Heap * getHeapChecked() {
     return runtime->GetHeap();
 }
 
-} // namespace niel
+} // namespace marvin
 } // namespace art
 
-#endif // ART_RUNTIME_NIEL_COMMON_H_
+#endif // ART_RUNTIME_MARVIN_COMMON_H_

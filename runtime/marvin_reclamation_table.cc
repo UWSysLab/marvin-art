@@ -1,4 +1,4 @@
-#include "niel_reclamation_table.h"
+#include "marvin_reclamation_table.h"
 
 #include "base/logging.h"
 
@@ -6,7 +6,7 @@
 
 namespace art {
 
-namespace niel {
+namespace marvin {
 
 namespace swap {
 
@@ -19,7 +19,7 @@ ReclamationTable ReclamationTable::CreateTable(int numEntries) {
                               -1,
                               0);
     if (baseAddress == MAP_FAILED) {
-        LOG(ERROR) << "NIELERROR mmap failed during reclamation table creation: "
+        LOG(ERROR) << "MARVINERROR mmap failed during reclamation table creation: "
                    << strerror(errno);
         return ReclamationTable(nullptr, 0);
     }
@@ -65,10 +65,10 @@ void ReclamationTable::UnlockAllEntries() {
 }
 
 void ReclamationTable::DebugPrint() {
-    LOG(INFO) << "NIELDEBUG ReclamationTable base_address_" << base_address_
+    LOG(INFO) << "MARVINDEBUG ReclamationTable base_address_" << base_address_
               << " num_entries_ " << num_entries_;
     for (TableEntry * curEntry = Begin(); curEntry < End(); curEntry++) {
-        LOG(INFO) << "NIELDEBUG " << curEntry
+        LOG(INFO) << "MARVINDEBUG " << curEntry
                   << "|" << curEntry->GetOccupiedBit()
                   << "|" << curEntry->GetKernelLockBit()
                   << "|" << (int)curEntry->GetAppLockCounter()
@@ -79,6 +79,6 @@ void ReclamationTable::DebugPrint() {
 
 } // namespace swap
 
-} // namespace niel
+} // namespace marvin
 
 } // namespace art

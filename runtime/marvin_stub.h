@@ -1,5 +1,5 @@
-#ifndef ART_RUNTIME_NIEL_STUB_H_
-#define ART_RUNTIME_NIEL_STUB_H_
+#ifndef ART_RUNTIME_MARVIN_STUB_H_
+#define ART_RUNTIME_MARVIN_STUB_H_
 
 #include <atomic>
 
@@ -7,7 +7,7 @@
 #include "base/mutex.h"
 #include "globals.h"
 
-#include "niel_reclamation_table.h"
+#include "marvin_reclamation_table.h"
 
 namespace art {
 
@@ -16,7 +16,7 @@ namespace mirror {
     class Object;
 }
 
-namespace niel {
+namespace marvin {
 
 namespace swap {
 
@@ -103,7 +103,7 @@ class Stub {
 void PopulateStub(Stub * stub, mirror::Object * object) SHARED_REQUIRES(Locks::mutator_lock_);
 
 } // namespace swap
-} // namespace niel
+} // namespace marvin
 } // namespace art
 
-#endif // ART_RUNTIME_NIEL_STUB_H_
+#endif // ART_RUNTIME_MARVIN_STUB_H_

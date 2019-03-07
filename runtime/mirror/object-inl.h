@@ -911,10 +911,10 @@ template<bool kTransactionActive, bool kCheckTransaction, VerifyObjectFlags kVer
 inline void Object::SetFieldObjectWithoutWriteBarrier(MemberOffset field_offset,
                                                       Object* new_value) {
   if (UNLIKELY(GetStubFlag())) {
-    niel::swap::Stub * stub = (niel::swap::Stub *)this;
+    marvin::swap::Stub * stub = (marvin::swap::Stub *)this;
     stub->LockTableEntry();
     if (UNLIKELY(!stub->GetTableEntry()->GetResidentBit())) {
-      niel::swap::SwapInOnDemand(stub);
+      marvin::swap::SwapInOnDemand(stub);
     }
     ((Object *)(stub->GetObjectAddress()))->SetFieldObjectWithoutWriteBarrier
         <kTransactionActive, kCheckTransaction, kVerifyFlags, kIsVolatile>

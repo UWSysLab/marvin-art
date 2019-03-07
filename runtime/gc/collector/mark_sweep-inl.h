@@ -23,7 +23,7 @@
 #include "mirror/class-inl.h"
 #include "mirror/object_array-inl.h"
 #include "mirror/reference.h"
-#include "niel_stub-inl.h"
+#include "marvin_stub-inl.h"
 
 namespace art {
 namespace gc {
@@ -35,7 +35,7 @@ inline void MarkSweep::ScanObjectVisit(mirror::Object* obj,
                                        const ReferenceVisitor& ref_visitor) {
   DCHECK(IsMarked(obj)) << "Scanning unmarked object " << obj << "\n" << heap_->DumpSpaces();
   if (obj->GetStubFlag()) {
-    niel::swap::Stub * stub = (niel::swap::Stub *)obj;
+    marvin::swap::Stub * stub = (marvin::swap::Stub *)obj;
     for (int i = 0; i < stub->GetNumRefs(); i++) {
       mirror::Object * ref = stub->GetReference(i);
       MarkObject(ref);

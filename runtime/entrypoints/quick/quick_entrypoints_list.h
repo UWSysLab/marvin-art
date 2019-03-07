@@ -162,8 +162,8 @@
   V(NewStringFromStringBuffer, void) \
   V(NewStringFromStringBuilder, void) \
 \
-  V(SwapInOnDemand, void, niel::swap::Stub*) \
-  V(PopulateStub, void, niel::swap::Stub*, mirror::Object*) \
+  V(SwapInOnDemand, void, marvin::swap::Stub*) \
+  V(PopulateStub, void, marvin::swap::Stub*, mirror::Object*) \
 \
   V(ReadBarrierJni, void, mirror::CompressedReference<mirror::Object>*, Thread*) \
   V(ReadBarrierMark, mirror::Object*, mirror::Object*) \

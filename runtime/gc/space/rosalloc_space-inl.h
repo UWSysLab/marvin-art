@@ -88,7 +88,7 @@ inline mirror::Object* RosAllocSpace::AllocCommon(Thread* self, size_t num_bytes
     DCHECK(bytes_tl_bulk_allocated != nullptr);
     *bytes_tl_bulk_allocated = rosalloc_bytes_tl_bulk_allocated;
   }
-  NIEL_INST_RECORD_ALLOC(self, this, rosalloc_bytes_allocated);
+  MARVIN_INST_RECORD_ALLOC(self, this, rosalloc_bytes_allocated);
   return result;
 }
 
@@ -99,12 +99,12 @@ inline bool RosAllocSpace::CanAllocThreadLocal(Thread* self, size_t num_bytes) {
 inline mirror::Object* RosAllocSpace::AllocThreadLocal(Thread* self, size_t num_bytes,
                                                        size_t* bytes_allocated) {
   DCHECK(bytes_allocated != nullptr);
-  mirror::Object * ni_ret_obj = reinterpret_cast<mirror::Object*>(
+  mirror::Object * mi_ret_obj = reinterpret_cast<mirror::Object*>(
       rosalloc_->AllocFromThreadLocalRun(self, num_bytes, bytes_allocated));
-  if (ni_ret_obj != nullptr) {
-      NIEL_INST_RECORD_ALLOC(self, this, *bytes_allocated);
+  if (mi_ret_obj != nullptr) {
+      MARVIN_INST_RECORD_ALLOC(self, this, *bytes_allocated);
   }
-  return ni_ret_obj;
+  return mi_ret_obj;
 }
 
 inline size_t RosAllocSpace::MaxBytesBulkAllocatedForNonvirtual(size_t num_bytes) {

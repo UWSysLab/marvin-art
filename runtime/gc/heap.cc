@@ -74,8 +74,8 @@
 #include "thread_list.h"
 #include "well_known_classes.h"
 
-#include "niel_instrumentation.h"
-#include "niel_scoped_timer.h"
+#include "marvin_instrumentation.h"
+#include "marvin_scoped_timer.h"
 
 namespace art {
 
@@ -956,15 +956,15 @@ void Heap::UpdateProcessState(ProcessState old_process_state, ProcessState new_p
         // deleted while the GC is still using it. I think the code below blocks until any
         // in-progress GC completes, but I'm not sure if it is the best/most correct way of
         // doing so (it is based on code in Heap::PerformHomogeneousSpaceCompact()).
-        niel::ScopedTimer timer("swap-in pause");
+        marvin::ScopedTimer timer("swap-in pause");
         Thread * self = Thread::Current();
         ScopedThreadStateChange stsc(self, kWaitingForGcToComplete);
         MutexLock mu(self, *gc_complete_lock_);
         WaitForGcToCompleteLocked(kGcCauseForAlloc, self);
-        ScopedSuspendAll ssa("niel_swap_objects_in");
-        niel::swap::UnlockAllReclamationTableEntries();
-        niel::swap::SetInForeground(true);
-        niel::swap::SwapObjectsIn(this);
+        ScopedSuspendAll ssa("marvin_swap_objects_in");
+        marvin::swap::UnlockAllReclamationTableEntries();
+        marvin::swap::SetInForeground(true);
+        marvin::swap::SwapObjectsIn(this);
       }
       // Transition back to foreground right away to prevent jank.
       RequestCollectorTransition(foreground_collector_type_, 0);
@@ -975,7 +975,7 @@ void Heap::UpdateProcessState(ProcessState old_process_state, ProcessState new_p
       // the collector.
       RequestCollectorTransition(background_collector_type_,
                                  kIsDebugBuild ? 0 : kCollectorTransitionWait);
-      niel::swap::SetInForeground(false);
+      marvin::swap::SetInForeground(false);
     }
   }
 }
@@ -1082,7 +1082,7 @@ void Heap::DeleteThreadPool() {
 
 void Heap::AddSpace(space::Space* space) {
   CHECK(space != nullptr);
-  nielinst_spaces_.push_back(space);
+  marvininst_spaces_.push_back(space);
   WriterMutexLock mu(Thread::Current(), *Locks::heap_bitmap_lock_);
   if (space->IsContinuousSpace()) {
     DCHECK(!space->IsDiscontinuousSpace());
@@ -1124,8 +1124,8 @@ void Heap::SetSpaceAsDefault(space::ContinuousSpace* continuous_space) {
 
 void Heap::RemoveSpace(space::Space* space) {
   DCHECK(space != nullptr);
-  auto nielinst_spaces_it = std::find(nielinst_spaces_.begin(), nielinst_spaces_.end(), space);
-  nielinst_spaces_.erase(nielinst_spaces_it);
+  auto marvininst_spaces_it = std::find(marvininst_spaces_.begin(), marvininst_spaces_.end(), space);
+  marvininst_spaces_.erase(marvininst_spaces_it);
   WriterMutexLock mu(Thread::Current(), *Locks::heap_bitmap_lock_);
   if (space->IsContinuousSpace()) {
     DCHECK(!space->IsDiscontinuousSpace());
@@ -2077,9 +2077,9 @@ HomogeneousSpaceCompactResult Heap::PerformHomogeneousSpaceCompact() {
   collector::GarbageCollector* collector;
   {
     ScopedSuspendAll ssa(__FUNCTION__);
-    niel::swap::UnlockAllReclamationTableEntries();
-    niel::swap::CreateStubs(self, this);
-    niel::swap::SwapObjectsOut();
+    marvin::swap::UnlockAllReclamationTableEntries();
+    marvin::swap::CreateStubs(self, this);
+    marvin::swap::SwapObjectsOut();
     uint64_t start_time = NanoTime();
     // Launch compaction.
     space::MallocSpace* to_space = main_space_backup_.release();

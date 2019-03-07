@@ -1,15 +1,15 @@
-#include "niel_trace.h"
+#include "marvin_trace.h"
 
 #include <fstream>
 #include <mutex>
 #include <string>
 
 #include "mirror/object.h"
-#include "niel_common.h"
+#include "marvin_common.h"
 
 namespace art {
 
-namespace niel {
+namespace marvin {
 
 namespace trace {
 
@@ -21,7 +21,7 @@ void InitializeTrace() {
     std::string packageName = getPackageName();
 
     if (appOnCommonBlacklist(packageName)) {
-        LOG(ERROR) << "NIELERROR stopping trace initialization due to blacklisted app"
+        LOG(ERROR) << "MARVINERROR stopping trace initialization due to blacklisted app"
                    << " (package name " << packageName << ")";
         return;
     }

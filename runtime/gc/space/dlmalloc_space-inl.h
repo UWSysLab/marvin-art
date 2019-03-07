@@ -21,7 +21,7 @@
 #include "gc/allocator/dlmalloc.h"
 #include "thread.h"
 
-#include "niel_instrumentation.h"
+#include "marvin_instrumentation.h"
 
 namespace art {
 namespace gc {
@@ -54,7 +54,7 @@ inline size_t DlMallocSpace::AllocationSizeNonvirtual(mirror::Object* obj, size_
 }
 
 inline mirror::Object* DlMallocSpace::AllocWithoutGrowthLocked(
-#if NIEL_INSTRUMENTATION_ENABLED && NIEL_ALLOCATOR_INST_ENABLED // this is disgusting; I am so sorry
+#if MARVIN_INSTRUMENTATION_ENABLED && MARVIN_ALLOCATOR_INST_ENABLED // this is disgusting; I am so sorry
     Thread* self, size_t num_bytes,
 #else
     Thread* /*self*/, size_t num_bytes,
@@ -72,7 +72,7 @@ inline mirror::Object* DlMallocSpace::AllocWithoutGrowthLocked(
     DCHECK(bytes_allocated != nullptr);
     *bytes_allocated = allocation_size;
     *bytes_tl_bulk_allocated = allocation_size;
-    NIEL_INST_RECORD_ALLOC(self, this, allocation_size);
+    MARVIN_INST_RECORD_ALLOC(self, this, allocation_size);
   }
   return result;
 }

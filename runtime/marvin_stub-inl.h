@@ -1,11 +1,11 @@
-#ifndef ART_RUNTIME_NIEL_STUB_INL_H_
-#define ART_RUNTIME_NIEL_STUB_INL_H_
+#ifndef ART_RUNTIME_MARVIN_STUB_INL_H_
+#define ART_RUNTIME_MARVIN_STUB_INL_H_
 
-#include "niel_stub.h"
+#include "marvin_stub.h"
 
 namespace art {
 
-namespace niel {
+namespace marvin {
 
 namespace swap {
 
@@ -73,7 +73,7 @@ inline void Stub::UnlockTableEntry() {
 
 
 } // namespace swap
-} // namespace niel
+} // namespace marvin
 } // namespace art
 
-#endif // ART_RUNTIME_NIEL_STUB_INL_H_
+#endif // ART_RUNTIME_MARVIN_STUB_INL_H_

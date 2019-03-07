@@ -1,11 +1,11 @@
-#ifndef ART_RUNTIME_NIEL_INSTRUMENTATION_H_
-#define ART_RUNTIME_NIEL_INSTRUMENTATION_H_
+#ifndef ART_RUNTIME_MARVIN_INSTRUMENTATION_H_
+#define ART_RUNTIME_MARVIN_INSTRUMENTATION_H_
 
 #include "base/mutex.h"
 #include "globals.h"
 
-#define NIEL_INSTRUMENTATION_ENABLED true
-#define NIEL_ALLOCATOR_INST_ENABLED false
+#define MARVIN_INSTRUMENTATION_ENABLED true
+#define MARVIN_ALLOCATOR_INST_ENABLED false
 
 /*
  * The point of the preprocessor directives below is to enable or
@@ -22,27 +22,27 @@
  * able to easily identify places where allocation or freeing happens.
  */
 
-#if NIEL_INSTRUMENTATION_ENABLED
-#define NIEL_INST_START_ACCESS_COUNT(...) niel::inst::StartAccessCount(__VA_ARGS__)
-#define NIEL_INST_COUNT_ACCESS(...) niel::inst::CountAccess(__VA_ARGS__)
-#define NIEL_INST_FINISH_ACCESS_COUNT(...) niel::inst::FinishAccessCount(__VA_ARGS__)
-#else // NIEL_INSTRUMENTATION_ENABLED
-#define NIEL_INST_START_ACCESS_COUNT(...)
-#define NIEL_INST_COUNT_ACCESS(...)
-#define NIEL_INST_FINISH_ACCESS_COUNT(...)
-#endif // NIEL_INSTRUMENTATION_ENABLED
+#if MARVIN_INSTRUMENTATION_ENABLED
+#define MARVIN_INST_START_ACCESS_COUNT(...) marvin::inst::StartAccessCount(__VA_ARGS__)
+#define MARVIN_INST_COUNT_ACCESS(...) marvin::inst::CountAccess(__VA_ARGS__)
+#define MARVIN_INST_FINISH_ACCESS_COUNT(...) marvin::inst::FinishAccessCount(__VA_ARGS__)
+#else // MARVIN_INSTRUMENTATION_ENABLED
+#define MARVIN_INST_START_ACCESS_COUNT(...)
+#define MARVIN_INST_COUNT_ACCESS(...)
+#define MARVIN_INST_FINISH_ACCESS_COUNT(...)
+#endif // MARVIN_INSTRUMENTATION_ENABLED
 
-#if NIEL_INSTRUMENTATION_ENABLED && NIEL_ALLOCATOR_INST_ENABLED
-#define NIEL_INST_RECORD_ROSALLOC_ALLOC(...) niel::inst::RecordRosAllocAlloc(__VA_ARGS__)
-#define NIEL_INST_RECORD_ROSALLOC_FREE(...) niel::inst::RecordRosAllocFree(__VA_ARGS__)
-#define NIEL_INST_RECORD_ALLOC(...) niel::inst::RecordAlloc(__VA_ARGS__)
-#define NIEL_INST_RECORD_FREE(...) niel::inst::RecordFree(__VA_ARGS__)
-#else // NIEL_INSTRUMENTATION_ENABLED && NIEL_ALLOCATOR_INST_ENABLED
-#define NIEL_INST_RECORD_ROSALLOC_ALLOC(...)
-#define NIEL_INST_RECORD_ROSALLOC_FREE(...)
-#define NIEL_INST_RECORD_ALLOC(...)
-#define NIEL_INST_RECORD_FREE(...)
-#endif // NIEL_INSTRUMENTATION_ENABLED && NIEL_ALLOCATOR_INST_ENABLED
+#if MARVIN_INSTRUMENTATION_ENABLED && MARVIN_ALLOCATOR_INST_ENABLED
+#define MARVIN_INST_RECORD_ROSALLOC_ALLOC(...) marvin::inst::RecordRosAllocAlloc(__VA_ARGS__)
+#define MARVIN_INST_RECORD_ROSALLOC_FREE(...) marvin::inst::RecordRosAllocFree(__VA_ARGS__)
+#define MARVIN_INST_RECORD_ALLOC(...) marvin::inst::RecordAlloc(__VA_ARGS__)
+#define MARVIN_INST_RECORD_FREE(...) marvin::inst::RecordFree(__VA_ARGS__)
+#else // MARVIN_INSTRUMENTATION_ENABLED && MARVIN_ALLOCATOR_INST_ENABLED
+#define MARVIN_INST_RECORD_ROSALLOC_ALLOC(...)
+#define MARVIN_INST_RECORD_ROSALLOC_FREE(...)
+#define MARVIN_INST_RECORD_ALLOC(...)
+#define MARVIN_INST_RECORD_FREE(...)
+#endif // MARVIN_INSTRUMENTATION_ENABLED && MARVIN_ALLOCATOR_INST_ENABLED
 
 namespace art {
 
@@ -60,7 +60,7 @@ namespace mirror {
 }
 class Thread;
 
-namespace niel {
+namespace marvin {
 
 namespace inst {
 
@@ -84,7 +84,7 @@ void CountAccess(gc::collector::GarbageCollector * gc, mirror::Object * object)
 void FinishAccessCount(gc::collector::GarbageCollector * gc);
 
 } // namespace inst
-} // namespace niel
+} // namespace marvin
 } // namespace art
 
 #endif

@@ -1,4 +1,4 @@
-#include "niel_swap.h"
+#include "marvin_swap.h"
 
 #include "gc/collector/garbage_collector.h"
 #include "gc/heap.h"
@@ -6,10 +6,10 @@
 #include "gc/task_processor.h"
 #include "mirror/object.h"
 #include "mirror/object-inl.h"
-#include "niel_common.h"
-#include "niel_reclamation_table.h"
-#include "niel_scoped_timer.h"
-#include "niel_stub-inl.h"
+#include "marvin_common.h"
+#include "marvin_reclamation_table.h"
+#include "marvin_scoped_timer.h"
+#include "marvin_stub-inl.h"
 #include "runtime.h"
 #include "thread_list.h"
 
@@ -27,7 +27,7 @@
 
 namespace art {
 
-namespace niel {
+namespace marvin {
 
 namespace swap {
 
@@ -306,11 +306,11 @@ class WriteTask : public gc::HeapTask {
         }
         Locks::mutator_lock_->ReaderUnlock(self);
 
-        LOG(INFO) << "NIEL done writing objects in WriteTask; " << queueSize
+        LOG(INFO) << "MARVIN done writing objects in WriteTask; " << queueSize
                   << " objects still in queue; swap file has " << swapfileObjects
                   << " objects, size " << swapfileSize;
         if (numGarbageObjects > 0 || numNullClasses > 0 || numResizedObjects > 0) {
-            LOG(ERROR) << "NIELERROR WriteTask irregularities: " << numGarbageObjects
+            LOG(ERROR) << "MARVINERROR WriteTask irregularities: " << numGarbageObjects
                        << " garbage objects, " << numNullClasses << " null classes, "
                        << numResizedObjects << " resized objects";
         }
@@ -346,7 +346,7 @@ void scheduleNextTask(Thread * self, bool ioError) {
     gc::TaskProcessor * taskProcessor = getTaskProcessorChecked();
     if (taskProcessor != nullptr && taskProcessor->IsRunning()) {
         if (ioError) {
-            LOG(INFO) << "NIEL not scheduling WriteTask again due to IO error";
+            LOG(INFO) << "MARVIN not scheduling WriteTask again due to IO error";
         }
         else {
             if (appInForeground) {
@@ -509,7 +509,7 @@ class ExcludeVisitor {
         mirror::Object * ref = obj->GetFieldObject<mirror::Object>(offset);
         if (ref != nullptr) {
             if (ref->GetStubFlag()) {
-                LOG(ERROR) << "NIELERROR ref " << ref << " of object " << obj
+                LOG(ERROR) << "MARVINERROR ref " << ref << " of object " << obj
                            << " that should be excluded from swapping was already swapped out";
             }
             else {
@@ -594,7 +594,7 @@ class GlobalRefRootVisitor : public RootVisitor {
             mirror::Object * oldRef = *roots[i];
             if (remappingTable.count(oldRef)) {
                 *roots[i] = (mirror::Object *)remappingTable[oldRef];
-                LOG(INFO) << "NIEL VisitRoots patching ref " << oldRef << " to " << remappingTable[oldRef];
+                LOG(INFO) << "MARVIN VisitRoots patching ref " << oldRef << " to " << remappingTable[oldRef];
             }
         }
     }
@@ -606,7 +606,7 @@ class GlobalRefRootVisitor : public RootVisitor {
             mirror::Object * oldRef = roots[i]->AsMirrorPtr();
             if (remappingTable.count(oldRef)) {
                 roots[i]->Assign((mirror::Object *)remappingTable[oldRef]);
-                LOG(INFO) << "NIEL VisitRoots patching ref " << oldRef << " to " << remappingTable[oldRef];
+                LOG(INFO) << "MARVIN VisitRoots patching ref " << oldRef << " to " << remappingTable[oldRef];
             }
         }
     }
@@ -800,7 +800,7 @@ void CreateStubs(Thread * self, gc::Heap * heap) {
             FreeFromRosAllocSpace(self, heap, obj);
         }
         else {
-            LOG(FATAL) << "NIELERROR object " << obj << " not in RosAlloc space or LOS";
+            LOG(FATAL) << "MARVINERROR object " << obj << " not in RosAlloc space or LOS";
         }
 
         // Do bookkeeping
@@ -1053,7 +1053,7 @@ void GcRecordFree(Thread * self, mirror::Object * object) {
         objectSizeMap.erase(object);
     }
     else if (objectOffsetMap.count(object) || objectSizeMap.count(object)) {
-        LOG(ERROR) << "NIELERROR: object in one of the object maps but not the other";
+        LOG(ERROR) << "MARVINERROR: object in one of the object maps but not the other";
     }
     swapFileMapsMutex.ExclusiveUnlock(self);
 
@@ -1082,7 +1082,7 @@ void InitIfNecessary(Thread * self) {
 
     gc::TaskProcessor * taskProcessor = getTaskProcessorChecked();
     if (taskProcessor == nullptr || !taskProcessor->IsRunning()) {
-        LOG(ERROR) << "NIELERROR failed to init swap since heap's TaskProcessor is null or not "
+        LOG(ERROR) << "MARVINERROR failed to init swap since heap's TaskProcessor is null or not "
                    << "ready (or heap is null)";
         return;
     }
@@ -1106,7 +1106,7 @@ void InitIfNecessary(Thread * self) {
     std::string swapfilePath("/data/data/" + packageName + "/swapfile");
 
     if (appOnCommonBlacklist(packageName)) {
-        LOG(ERROR) << "NIELERROR stopping swap initialization due to blacklisted app"
+        LOG(ERROR) << "MARVINERROR stopping swap initialization due to blacklisted app"
                    << " (package name " << packageName << ")";
         return;
     }
@@ -1119,24 +1119,24 @@ void InitIfNecessary(Thread * self) {
     swapFileMutex.ExclusiveUnlock(self);
 
     if (ioError) {
-        LOG(ERROR) << "NIELERROR not scheduling first WriteTask due to IO error (package name "
+        LOG(ERROR) << "MARVINERROR not scheduling first WriteTask due to IO error (package name "
                    << packageName << ")";
         return;
     }
 
     {
-        ScopedSuspendAll ssa("niel_init_swap");
+        ScopedSuspendAll ssa("marvin_init_swap");
         uint8_t * start = (uint8_t *)SWAPPED_IN_SPACE_START;
         swappedInSpace = gc::space::FreeListSpace::Create("SwappedInSpace",
                                                           start,
                                                           SWAPPED_IN_SPACE_SIZE);
         getHeapChecked()->AddSpace(swappedInSpace);
         if (swappedInSpace == nullptr) {
-            LOG(ERROR) << "NIELERROR SwappedInSpace is null";
+            LOG(ERROR) << "MARVINERROR SwappedInSpace is null";
             return;
         }
         if (swappedInSpace->Begin() != (uint8_t *)SWAPPED_IN_SPACE_START) {
-            LOG(ERROR) << "NIELERROR SwappedInSpace begins at wrong address: "
+            LOG(ERROR) << "MARVINERROR SwappedInSpace begins at wrong address: "
                        << (void *)swappedInSpace->Begin();
             return;
         }
@@ -1144,7 +1144,7 @@ void InitIfNecessary(Thread * self) {
 
     recTable = ReclamationTable::CreateTable(REC_TABLE_NUM_ENTRIES);
     if (!recTable.IsValid()) {
-        LOG(ERROR) << "NIELERROR error creating reclamation table";
+        LOG(ERROR) << "MARVINERROR error creating reclamation table";
         return;
     }
 
@@ -1152,10 +1152,10 @@ void InitIfNecessary(Thread * self) {
     uint64_t targetTime = NanoTime() + WRITE_TASK_STARTUP_DELAY;
     taskProcessor->AddTask(Thread::Current(), new WriteTask(targetTime));
 
-    LOG(INFO) << "NIEL successfully initialized swap for package " << packageName;
-    LOG(INFO) << "NIEL commercial app compat mode is "
+    LOG(INFO) << "MARVIN successfully initialized swap for package " << packageName;
+    LOG(INFO) << "MARVIN commercial app compat mode is "
               << (COMMERCIAL_APP_COMPAT_MODE ? "enabled" : "disabled");
-    LOG(INFO) << "NIEL preemptive swap-in on foreground transitions is "
+    LOG(INFO) << "MARVIN preemptive swap-in on foreground transitions is "
               << (SWAP_IN_ON_FOREGROUND ? "enabled" : "disabled");
 }
 
@@ -1163,7 +1163,7 @@ bool copyFile(const std::string & fromFileName, const std::string & toFileName) 
     bool copyingError = false;
     int removeRet = remove(toFileName.c_str());
     if (removeRet < 0) {
-        LOG(INFO) << "NIEL error removing file (maybe expected): " << toFileName;
+        LOG(INFO) << "MARVIN error removing file (maybe expected): " << toFileName;
     }
 
     struct stat statBuf;
@@ -1205,7 +1205,7 @@ bool copyFile(const std::string & fromFileName, const std::string & toFileName) 
 
 void CompactSwapFile(Thread * self) {
     CHECK(swapEnabled);
-    LOG(INFO) << "NIEL compacting swap file";
+    LOG(INFO) << "MARVIN compacting swap file";
 
     std::string swapfilePath("/data/data/" + getPackageName() + "/swapfile");
     std::string oldSwapfilePath("/data/data/" + getPackageName() + "/oldswapfile");
@@ -1221,7 +1221,7 @@ void CompactSwapFile(Thread * self) {
     swapfile.close();
     bool copyingError = copyFile(swapfilePath, oldSwapfilePath);
     if (copyingError) {
-        LOG(ERROR) << "NIELERROR error copying swap file";
+        LOG(ERROR) << "MARVINERROR error copying swap file";
     }
     openFileAppend(swapfilePath, swapfile);
     swapFileMutex.ExclusiveUnlock(self);
@@ -1286,10 +1286,10 @@ void CompactSwapFile(Thread * self) {
     swapFileMapsMutex.ExclusiveUnlock(self);
 
     if (ioError) {
-        LOG(INFO) << "NIEL detected errors while compacting swap file";
+        LOG(INFO) << "MARVIN detected errors while compacting swap file";
     }
     else {
-        LOG(INFO) << "NIEL finished compacting swap file; new swap file has " << swapfileObjects
+        LOG(INFO) << "MARVIN finished compacting swap file; new swap file has " << swapfileObjects
                   << " objects, size " << swapfileSize;
     }
 }
@@ -1388,13 +1388,13 @@ void CheckAndUpdate(gc::collector::GarbageCollector * gc, mirror::Object * objec
 void validateSwapFile(Thread * self) {
     bool error = false;
 
-    LOG(INFO) << "NIEL starting swap file validation";
+    LOG(INFO) << "MARVIN starting swap file validation";
 
     swapFileMutex.ExclusiveLock(self);
     swapFileMapsMutex.SharedLock(self);
 
     if (objectOffsetMap.size() != objectSizeMap.size()) {
-        LOG(ERROR) << "NIELERROR: objectOffsetMap and objectSizeMap sizes differ";
+        LOG(ERROR) << "MARVINERROR: objectOffsetMap and objectSizeMap sizes differ";
         error = true;
     }
 
@@ -1408,7 +1408,7 @@ void validateSwapFile(Thread * self) {
         std::streampos offset = it->second;
 
         if (!objectSizeMap.count(object)) {
-            LOG(ERROR) << "NIELERROR: objectSizeMap does not contain object " << object;
+            LOG(ERROR) << "MARVINERROR: objectSizeMap does not contain object " << object;
             error = true;
         }
 
@@ -1425,7 +1425,7 @@ void validateSwapFile(Thread * self) {
         }
 
         if (objectSize < 16) {
-            LOG(ERROR) << "NIELERROR: object size " << objectSize << " is too small";
+            LOG(ERROR) << "MARVINERROR: object size " << objectSize << " is too small";
             error = true;
         }
 
@@ -1441,10 +1441,10 @@ void validateSwapFile(Thread * self) {
     swapFileMutex.ExclusiveUnlock(self);
 
     if (error) {
-        LOG(ERROR) << "NIELERROR swap file validation detected errors";
+        LOG(ERROR) << "MARVINERROR swap file validation detected errors";
     }
     else {
-        LOG(INFO) << "NIEL swap file validation successful";
+        LOG(INFO) << "MARVIN swap file validation successful";
     }
 }
 
@@ -1461,7 +1461,7 @@ void debugPrintDataStructureInfo(Thread * self, const std::string & message) {
   objectOffsetMapTotalCount = objectOffsetMap.size();
   swapFileMapsMutex.SharedUnlock(self);
 
-  LOG(INFO) << "NIEL (" << message << ") objectOffsetMap contains "
+  LOG(INFO) << "MARVIN (" << message << ") objectOffsetMap contains "
             << objectOffsetMapTotalCount << " total objects, " << objectOffsetMapStubCount
             << " stubs";
 }
@@ -1516,7 +1516,7 @@ class DumpObjectReferenceVisitor {
 };
 
 void dumpObject(mirror::Object * obj) SHARED_REQUIRES(Locks::mutator_lock_) {
-    LOG(INFO) << "NIEL dump of object @" << obj;
+    LOG(INFO) << "MARVIN dump of object @" << obj;
     LOG(INFO) << "size: " << obj->SizeOf();
     LOG(INFO) << "class: "
               << (obj->GetClass() == nullptr ? "null" : PrettyClass(obj->GetClass()));
@@ -1525,9 +1525,9 @@ void dumpObject(mirror::Object * obj) SHARED_REQUIRES(Locks::mutator_lock_) {
     DumpObjectReferenceVisitor refVisitor;
     obj->VisitReferences(visitor, refVisitor);
 
-    LOG(INFO) << "NIEL end dump of object @" << obj;
+    LOG(INFO) << "MARVIN end dump of object @" << obj;
 }
 
 } // namespace swap
-} // namespace niel
+} // namespace marvin
 } // namespace art

@@ -19,7 +19,7 @@
 
 #include "rosalloc.h"
 
-#include "niel_instrumentation.h"
+#include "marvin_instrumentation.h"
 
 namespace art {
 namespace gc {
@@ -98,7 +98,7 @@ inline void* RosAlloc::AllocFromThreadLocalRun(Thread* self, size_t size,
   if (LIKELY(slot_addr != nullptr)) {
     *bytes_allocated = bracket_size;
   }
-  NIEL_INST_RECORD_ROSALLOC_ALLOC(self, bracket_size, niel::inst::ROSALLOC_ALLOC_THREAD_LOCAL);
+  MARVIN_INST_RECORD_ROSALLOC_ALLOC(self, bracket_size, marvin::inst::ROSALLOC_ALLOC_THREAD_LOCAL);
   return slot_addr;
 }
 

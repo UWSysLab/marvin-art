@@ -606,7 +606,7 @@ static void VMRuntime_registerAppInfo(JNIEnv* env,
                                       foreign_dex_profile_path_str,
                                       app_dir_str);
 
-  niel::swap::InitIfNecessary(Thread::Current());
+  marvin::swap::InitIfNecessary(Thread::Current());
 }
 
 static jboolean VMRuntime_isBootClassPathOnDisk(JNIEnv* env, jclass, jstring java_instruction_set) {

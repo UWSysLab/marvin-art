@@ -1,5 +1,5 @@
-#ifndef ART_RUNTIME_NIEL_SWAP_H_
-#define ART_RUNTIME_NIEL_SWAP_H_
+#ifndef ART_RUNTIME_MARVIN_SWAP_H_
+#define ART_RUNTIME_MARVIN_SWAP_H_
 
 #include "base/mutex.h"
 
@@ -17,7 +17,7 @@ namespace mirror {
     class Object;
 }
 
-namespace niel {
+namespace marvin {
 
 namespace swap {
 
@@ -99,11 +99,11 @@ void UnlockAllReclamationTableEntries() REQUIRES(Locks::mutator_lock_);
 
 
 // Not a part of public swap API. Utility function that would be in
-// niel_common.h, except it needs to have access to the swappedInSpace.
+// marvin_common.h, except it needs to have access to the swappedInSpace.
 bool objectInSwappableSpace(gc::Heap * heap, mirror::Object * obj);
 
 } // namespace swap
-} // namespace niel
+} // namespace marvin
 } // namespace art
 
 #endif
