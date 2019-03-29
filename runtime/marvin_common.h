@@ -36,7 +36,7 @@ inline bool objectIsCold(uint8_t writeShiftRegVal, bool wasWritten) {
 }
 
 inline bool objectIsLarge(size_t objectSize) {
-    return objectSize > 200;
+    return objectSize >= 2 * 1024;
 }
 
 /*
