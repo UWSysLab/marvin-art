@@ -22,7 +22,7 @@ directly into the computer where you compiled AOSP, you can use
 `fastboot flashall` as recommended in the [instructions][flashing-aosp] on the
 AOSP website. Otherwise, you can copy the `.img` files from the
 `out/target/product/[product-name]` directory of the AOSP source tree and
-manually flash them onto your device using the version `fastboot` that comes
+manually flash them onto your device using the version of `fastboot` that comes
 with the Android SDK.
 
 [downloading-aosp]: https://source.android.com/setup/build/downloading
