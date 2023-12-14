@@ -63,6 +63,7 @@ if (UNLIKELY(GetStubFlag())) { \
   } \
   ((type_name *)(stub->GetObjectAddress()))->func_name(__VA_ARGS__); \
   stub->UnlockTableEntry(); \
+  return; \
 }
 
 #define SWAP_PREAMBLE_TEMPLATE_VOID(func_name, type_name, template_args, ...) \
@@ -74,6 +75,7 @@ if (UNLIKELY(GetStubFlag())) { \
   } \
   ((type_name *)(stub->GetObjectAddress()))->func_name<template_args>(__VA_ARGS__); \
   stub->UnlockTableEntry(); \
+  return; \
 }
 
 #define GATHER_TEMPLATE_ARGS(...) __VA_ARGS__
